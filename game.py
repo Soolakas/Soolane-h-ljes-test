@@ -14,8 +14,6 @@ from menu.screens.upgrades import UpgradesScreen
 from menu.screens.pause import PauseScreen
 from menu.screens.game_over import GameOverScreen
 from config.settings_store import GameSettings
-import textures
-import textures
 
 # ============================================
 # pygame setup - Pygame seadistus
@@ -276,19 +274,11 @@ def apply_powerup(powerup_type):
         rapid_fire_timer = powerup_duration
 
 
-def draw_health_square(surface, x, y, size, filled):
-    """Joonistab väikese tervise ruudu (täidetud või tühi)."""
-    color = (255, 70, 95) if filled else (80, 80, 80)
-    outline = (255, 120, 135) if filled else (120, 120, 120)
-    rect = pygame.Rect(x, y, size, size)
-
-    pygame.draw.rect(surface, color, rect)
-    pygame.draw.rect(surface, outline, rect, 2)
-
-
 def render_game_screen():
-    """Joonistab kogu mängu ekraani: kaardi, vaenlased, mängija, kuulid, efektid, HUD."""
-    screen.fill("black")
+    """Joonistab kogu mängu ekraani: tausta, kaardi, vaenlased, mängija, kuulid, efektid, HUD."""
+
+    # Neon grid background
+    textures.draw_background(screen, camera_offset)
 
     # Kaardi piirjoon
     pygame.draw.polygon(screen, "white", [(v[0] - camera_offset.x, v[1] - camera_offset.y) for v in map_vertices], 3)
@@ -315,44 +305,22 @@ def render_game_screen():
         )
         screen.blit(label, label_pos)
 
-    # Mängija jälg
-    trail_radius = int(player_radius * 0.35)
-    for pos, age in trail:
-        screen_pos = (pos.x - camera_offset.x, pos.y - camera_offset.y)
-        alpha = int(150 * (1 - age / TRAIL_LIFETIME))
-        trail_surf = pygame.Surface((trail_radius * 2, trail_radius * 2))
-        trail_surf.set_colorkey((0, 0, 0))
-        trail_surf.set_alpha(alpha)
-        pygame.draw.circle(trail_surf, (255, 255, 255), (trail_radius, trail_radius), trail_radius)
-        screen.blit(trail_surf, (screen_pos[0] - trail_radius, screen_pos[1] - trail_radius))
+    # Mängija jälg - animated pixel fire trail
+    textures.draw_player_trail(screen, trail, player_pos, TRAIL_LIFETIME, camera_offset, 9)
 
-    # Mängija nool
-    arrow_points = [
-        (0, -player_radius),
-        (-player_radius * 0.5, player_radius * 0.3),
-        (0, player_radius * 0.5),
-        (player_radius * 0.5, player_radius * 0.3),
-    ]
+    # Mängija laev - sprite sheet based player model
+    textures.draw_player_sprite(
+        screen,
+        player_pos,
+        player_angle,
+        player_radius,
+        camera_offset,
+        player_invulnerable_timer > 0,
+    )
 
-    arrow_surface = pygame.Surface((player_radius * 2, player_radius * 2), pygame.SRCALPHA)
-    arrow_surface_points = [
-        (p[0] + player_radius, p[1] + player_radius) for p in arrow_points
-    ]
-    arrow_alpha = 180
-    if player_invulnerable_timer > 0 and int(pygame.time.get_ticks() / 120) % 2 == 0:
-        arrow_alpha = 80
-    pygame.draw.polygon(arrow_surface, (255, 255, 255, arrow_alpha), arrow_surface_points)
-    rotated_arrow = pygame.transform.rotate(arrow_surface, -player_angle)
-    screen_x = player_pos.x - camera_offset.x - rotated_arrow.get_width() / 2
-    screen_y = player_pos.y - camera_offset.y - rotated_arrow.get_height() / 2
-    screen.blit(rotated_arrow, (screen_x, screen_y))
-
-    # Kuulid
+    # Kuulid - glow line projectiles
     for projectile in projectiles:
-        end_pos = projectile["pos"] + projectile["vel"].normalize() * 15
-        start_screen = (projectile["pos"].x - camera_offset.x, projectile["pos"].y - camera_offset.y)
-        end_screen = (end_pos.x - camera_offset.x, end_pos.y - camera_offset.y)
-        pygame.draw.line(screen, "yellow", start_screen, end_screen, 3)
+        textures.draw_projectile(screen, projectile, camera_offset)
 
     # Visuaalsed efektid
     vfx_manager.draw(screen, camera_offset)
@@ -364,7 +332,7 @@ def render_game_screen():
     health_x = screen.get_width() / 2 - health_width / 2
     for health_idx in range(player_max_health):
         square_x = int(health_x + health_idx * (health_size + health_gap))
-        draw_health_square(screen, square_x, 10, health_size, health_idx < player_health)
+        textures.draw_health_square(screen, square_x, 10, health_size, health_idx < player_health)
 
     # Aeg ja punktid
     font = pygame.font.SysFont(None, 28)
@@ -372,14 +340,6 @@ def render_game_screen():
     screen.blit(time_text, (10, 10))
     score_text = font.render(f"Score: {score}", True, (255, 255, 255))
     screen.blit(score_text, (10, 38))
-# ============================================
-# Main game loop - Mängu tsükkel
-# ============================================
-while running:
-    # poll for events
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
 
     # Aktiivsed power-up'id
     active_powerups = []
@@ -632,11 +592,7 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
-    # Draw neon background
-    textures.draw_background(screen, camera_offset)
     current_state = state_manager.current_state
-    # Draw neon background
-    textures.draw_background(screen, camera_offset)
 
     # ============================================
     # PLAYING state - Aktiivne mäng
@@ -647,9 +603,6 @@ while running:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 state_manager.push_state(GameState.PAUSED)
                 break
-
-    # Draw neon background
-    textures.draw_background(screen, camera_offset)
 
         update_game_logic()
 
@@ -669,18 +622,7 @@ while running:
         pause_screen.handle_events(events)
         pause_screen.update(dt)
         pause_screen.draw(screen)
-    # Draw player trail - Mängija jälg
-    textures.draw_player_trail(screen, trail, player_pos, TRAIL_LIFETIME, camera_offset, 9)
 
-    # Draw player ship - Mängija laev
-    textures.draw_player_sprite(
-        screen,
-        player_pos,
-        player_angle,
-        player_radius,
-        camera_offset,
-        player_invulnerable_timer > 0,
-    )
     # ============================================
     # MENU / SETTINGS / UPGRADES / GAME_OVER states - Menüü ekraanid
     # ============================================
@@ -703,79 +645,6 @@ while running:
             game_over_screen.handle_events(events)
             game_over_screen.update(dt)
             game_over_screen.draw(screen)
-
-    # Draw player ship - Mängija laev
-    textures.draw_player_sprite(
-        screen,
-        player_pos,
-        player_angle,
-        player_radius,
-        camera_offset,
-        player_invulnerable_timer > 0,
-    )
-    # Draw player ship - Mängija laev
-    textures.draw_player_sprite(
-        screen,
-        player_pos,
-        player_angle,
-        player_radius,
-        camera_offset,
-        player_invulnerable_timer > 0,
-    )
-
-    # Draw projectiles - Kuulide renderdus
-    for projectile in projectiles:
-        textures.draw_projectile(screen, projectile, camera_offset)
-
-    # Draw VFX - Visuaalsed efektid
-    vfx_manager.draw(screen, camera_offset)
-
-    # Draw health squares
-    health_size = 24
-    health_gap = 8
-    health_width = player_max_health * health_size + (player_max_health - 1) * health_gap
-    health_x = screen.get_width() / 2 - health_width / 2
-    for health_idx in range(player_max_health):
-        square_x = int(health_x + health_idx * (health_size + health_gap))
-        textures.draw_health_square(screen, square_x, 10, health_size, health_idx < player_health)
-
-    # Draw elapsed time - Aja kuvamine
-    font = pygame.font.SysFont(None, 28)
-    time_text = font.render(f"Time: {difficulty_manager.get_elapsed_time()}", True, (255, 255, 255))
-    screen.blit(time_text, (10, 10))
-    score_text = font.render(f"Score: {score}", True, (255, 255, 255))
-    screen.blit(score_text, (10, 38))
-
-    active_powerups = []
-    if multi_shot_timer > 0:
-        active_powerups.append(f"Multi: {multi_shot_timer:.1f}s")
-    if speed_power_timer > 0:
-        active_powerups.append(f"Speed: {speed_power_timer:.1f}s")
-    if rapid_fire_timer > 0:
-        active_powerups.append(f"Fire Rate: {rapid_fire_timer:.1f}s")
-
-    for idx, powerup_text in enumerate(active_powerups):
-        rendered = font.render(powerup_text, True, (255, 255, 255))
-        screen.blit(rendered, (10, 66 + idx * 26))
-
-    if game_over:
-        game_over_font = pygame.font.SysFont(None, 72)
-        game_over_text = game_over_font.render("GAME OVER", True, (255, 80, 80))
-        score_final_text = font.render(f"Final Score: {score}", True, (255, 255, 255))
-        screen.blit(
-            game_over_text,
-            (
-                screen.get_width() / 2 - game_over_text.get_width() / 2,
-                screen.get_height() / 2 - game_over_text.get_height(),
-            ),
-        )
-        screen.blit(
-            score_final_text,
-            (
-                screen.get_width() / 2 - score_final_text.get_width() / 2,
-                screen.get_height() / 2 + 10,
-            ),
-        )
 
     # flip() the display to put your work on screen
     pygame.display.flip()
