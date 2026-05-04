@@ -105,7 +105,7 @@ rapid_fire_multiplier = 2.0                   # Kiirtule kordaja
 powerups = []                                  # Power-up'id (boonused)
 powerup_radius = 13                           # Power-up'i suurus
 powerup_drop_chance = 0.14                    # Power-up'i langemise tõenäosus
-powerup_lifetime = 12.0                       # Power-up'i eluiga (kaob pärast seda aega)
+powerup_lifetime = 12.0                       # Power-up'i eluiga (kaob pärast seda aeg)
 powerup_duration = 8.0                        # Power-up'i kestus (mõju aeg)
 POWERUP_TYPES = {
     "multi_shot": {       # Mitmelasu boonus
