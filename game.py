@@ -7,6 +7,13 @@ from spawn_manager import SpawnManager
 from difficulty_manager import DifficultyManager
 from vfx_manager import VFXManager
 import textures
+from menu.state_manager import StateManager, GameState
+from menu.screens.main_menu import MainMenuScreen
+from menu.screens.settings import SettingsScreen
+from menu.screens.upgrades import UpgradesScreen
+from menu.screens.pause import PauseScreen
+from menu.screens.game_over import GameOverScreen
+from config.settings_store import GameSettings
 
 # ============================================
 # pygame setup - Pygame seadistus
@@ -15,18 +22,24 @@ pygame.init()
 screen = pygame.display.set_mode((1280, 720))
 clock = pygame.time.Clock()
 running = True
-dt = 0
+dt = 0  # Eelneva kaadri kestus sekundites
+
+# ============================================
+# Seaded ja olekuhaldur - Settings and state manager
+# ============================================
+settings = GameSettings()        # Mängu seadete objekt (salvestab JSON faili)
+state_manager = StateManager()   # Olekuhaldur (menüü, mäng, paus jne)
 
 # ============================================
 # Map configuration - Kaardi seaded
 # ============================================
-WORLD_SIZE = 3000
-MAP_INSET = 300
+WORLD_SIZE = 3000    # Maailma suurus pikslites
+MAP_INSET = 300      # Kaardi serva taandumine
 
-# Generate octagonal map vertices
 center = WORLD_SIZE / 2
 apothem = (WORLD_SIZE - 2 * MAP_INSET) / 2
 
+# Genereerime kaheksanurkse kaardi tipud
 map_vertices = []
 for i in range(8):
     angle = math.radians(45 * i + 22.5)
@@ -35,111 +48,154 @@ for i in range(8):
     map_vertices.append((x, y))
 
 # ============================================
+# Ekraanid - Screens
+# ============================================
+# Iga menüüekraan on eraldi klass, mis haldab oma nuppe ja joonistamist
+main_menu_screen = MainMenuScreen(state_manager, settings)
+settings_screen = SettingsScreen(state_manager, settings, screen)
+upgrades_screen = UpgradesScreen(state_manager, settings)
+pause_screen = PauseScreen(state_manager, settings)
+game_over_screen = GameOverScreen(state_manager, settings)
+
+# Ekraanide register - kasutatakse peamenüü alam-ekraanide jaoks
+screens = {
+    GameState.MENU: main_menu_screen,
+    GameState.SETTINGS: settings_screen,
+    GameState.UPGRADES: upgrades_screen,
+    GameState.PAUSED: pause_screen,
+    GameState.GAME_OVER: game_over_screen,
+}
+
+# ============================================
 # Camera - Kaamera seaded
 # ============================================
-camera_offset = pygame.Vector2(0, 0)
+camera_offset = pygame.Vector2(0, 0)  # Kaamera nihe maailma suhtes
 
 # ============================================
-# Player settings - Mängija seaded
+# Game state variables - Mängu oleku muutujad
 # ============================================
-player_pos = pygame.Vector2(center, center)
-player_radius = 15
-player_angle = 0
-target_angle = 0
-rotation_speed = 8
-player_max_health = 7
-player_health = player_max_health
-player_invulnerable_timer = 0.0
-player_invulnerable_duration = 1.0
-game_over = False
+player_pos = pygame.Vector2(center, center)   # Mängija asukoht maailmas
+player_radius = 15                            # Mängija suurus
+player_angle = 0                              # Mängija pöördenurk
+target_angle = 0                              # Sihtpöördenurk
+rotation_speed = 8                            # Pöörlemise kiirus
+player_max_health = 7                         # Maksimaalne tervis
+player_health = player_max_health             # Praegune tervis
+player_invulnerable_timer = 0.0               # Haavamatususe taimer
+player_invulnerable_duration = 1.0            # Haavamatususe kestus
+game_over = False                             # Kas mäng on läbi
 
-# ============================================
-# Drift physics - Triivfüüsika (floaty controls)
-# ============================================
-player_velocity = pygame.Vector2(0, 0)
-player_acceleration = 1200      # Acceleration rate (pixels/s²)
-player_drag = 4.0               # Friction coefficient (higher = less drift)
-speed_power_multiplier = 1.7
-speed_power_timer = 0.0
+player_velocity = pygame.Vector2(0, 0)        # Mängija kiirus (triivfüüsika)
+player_acceleration = 1200                    # Kiirendus (pikslit/s²)
+player_drag = 4.0                             # Hõõrdetegur (suurem = vähem triivi)
+speed_power_multiplier = 1.7                  # Kiiruse boonus kordaja
+speed_power_timer = 0.0                       # Kiiruse boonus taimer
 
-# ============================================
-# Projectiles - Kuulid
-# ============================================
-projectiles = []
-projectile_speed = 700
-projectile_radius = 8
+projectiles = []                               # Kuulid
+projectile_speed = 700                        # Kuuli kiirus
+projectile_radius = 8                         # Kuuli suurus
 
-shoot_cooldown = 0.25           # Slower shooting speed
-shoot_timer = 0
-multi_shot_timer = 0.0
-multi_shot_projectile_count = 3
-multi_shot_spread = 18
-rapid_fire_timer = 0.0
-rapid_fire_multiplier = 2.0
+shoot_cooldown = 0.25                         # Laskmise jahe
+shoot_timer = 0                               # Laskmise taimer
+multi_shot_timer = 0.0                        # Mitmelasu boonus taimer
+multi_shot_projectile_count = 3               # Kuulide arv mitmelasu puhul
+multi_shot_spread = 18                        # Kuulide nurkhajumine
+rapid_fire_timer = 0.0                        # Kiirtule boonus taimer
+rapid_fire_multiplier = 2.0                   # Kiirtule kordaja
 
-# ============================================
-# Power upid
-# ============================================
-powerups = []
-powerup_radius = 13
-powerup_drop_chance = 0.14
-powerup_lifetime = 12.0
-powerup_duration = 8.0
+powerups = []                                  # Power-up'id (boonused)
+powerup_radius = 13                           # Power-up'i suurus
+powerup_drop_chance = 0.14                    # Power-up'i langemise tõenäosus
+powerup_lifetime = 12.0                       # Power-up'i eluiga (kaob pärast seda aeg)
+powerup_duration = 8.0                        # Power-up'i kestus (mõju aeg)
 POWERUP_TYPES = {
-    "multi_shot": {
+    "multi_shot": {       # Mitmelasu boonus
         "color": (255, 210, 60),
         "label": "M",
     },
-    "speed": {
+    "speed": {            # Kiiruse boonus
         "color": (70, 220, 255),
         "label": "S",
     },
-    "rapid_fire": {
+    "rapid_fire": {       # Kiirtule boonus
         "color": (255, 110, 210),
         "label": "R",
     },
 }
 
-# ============================================
-# Punktid
-# ============================================
-score = 0
+score = 0  # Punktid
 
-# ============================================
-# Enemy system - Vaenlase süsteem
-# ============================================
-enemies = []
+enemies = []  # Vaenlased
 
-# ============================================
-# Time difficulty - Ajaline raskus
-# ============================================
+# Raskusaste ja tekitamine - Difficulty and spawning
 difficulty_manager = DifficultyManager()
 spawn_manager = SpawnManager(map_vertices, (center, center), difficulty_manager)
 
-# ============================================
-# Visual effects - Efektid
-# ============================================
+# Visuaalsed efektid - Visual effects
 vfx_manager = VFXManager()
 
-# ============================================
-# Player trail - Mängija jälg
-# ============================================
-TRAIL_LIFETIME = 0.5            # How long trail points last in seconds
-TRAIL_INTERVAL = 0.02           # How often to record a trail point
+# Mängija jälg - Player trail
+TRAIL_LIFETIME = 0.5    # Kui kaua jälje punktid kestavad
+TRAIL_INTERVAL = 0.02   # Kui tihti jälgipunkti lisatakse
 trail_timer = 0
-trail = []                      # List of (position, age) tuples
+trail = []
 
-# ============================================
-# Time system - Ajasüsteem
-# ============================================
-game_time = 0
+game_time = 0  # Mängu aeg
+
+
+def init_game():
+    """Lähtestab kõik mängu muutujad algväärtustele.
+    Initialize all game variables to their starting values."""
+    global player_pos, player_angle, target_angle, player_health, player_invulnerable_timer
+    global game_over, player_velocity, shoot_timer, multi_shot_timer
+    global speed_power_timer, rapid_fire_timer, projectiles, powerups, score
+    global enemies, trail_timer, trail, game_time
+
+    player_pos = pygame.Vector2(center, center)
+    player_angle = 0
+    target_angle = 0
+    player_health = player_max_health
+    player_invulnerable_timer = 0.0
+    game_over = False
+
+    player_velocity = pygame.Vector2(0, 0)
+    shoot_timer = 0
+    multi_shot_timer = 0.0
+    speed_power_timer = 0.0
+    rapid_fire_timer = 0.0
+
+    projectiles = []
+    powerups = []
+    score = 0
+    enemies = []
+
+    trail_timer = 0
+    trail = []
+    game_time = 0
+
+    # Lähtestame ka raskuse ja tekitamise
+    difficulty_manager.elapsed_time = 0.0
+    spawn_manager.spawn_timer = 0.0
+    vfx_manager.particles = []
+
+
+def reset_game():
+    """Lähtestab mängu oleku, kui menüüdest tagasi mängu tullakse.
+    Reset game state when returning to playing from menus."""
+    init_game()
+
+
+# Seame tagasihelistamised menüüekraanidele
+pause_screen.set_game_reset_callback(reset_game)
+game_over_screen.set_restart_callback(reset_game)
+
 
 # ============================================
 # Utility functions - Abifunktsioonid
 # ============================================
 
 def point_in_polygon(point, vertices):
-    """Check if a point is inside a polygon using ray casting algorithm."""
+    """Kontrollib, kas punkt asub hulknurga sees (kiirete algoritm)."""
     x, y = point
     inside = False
     n = len(vertices)
@@ -154,11 +210,10 @@ def point_in_polygon(point, vertices):
 
 
 def clamp_to_map(pos, vertices, radius):
-    """Clamp player position to stay inside the map boundary."""
+    """Piirab mängija asukoha kaardi sisse. Kui väljas, leiab lähima serva punkti."""
     if point_in_polygon((pos.x, pos.y), vertices):
         return pos
 
-    # Find the closest point on any map edge
     min_dist = float('inf')
     closest = pos
     for i in range(len(vertices)):
@@ -180,7 +235,6 @@ def clamp_to_map(pos, vertices, radius):
             min_dist = dist
             closest = pygame.Vector2(proj_x, proj_y)
 
-    # Push player inside: dir_vec points from player to edge (inward)
     if min_dist > 0:
         dir_vec = pygame.Vector2(closest.x - pos.x, closest.y - pos.y).normalize()
         return closest + dir_vec * radius
@@ -188,7 +242,7 @@ def clamp_to_map(pos, vertices, radius):
 
 
 def spawn_powerup(world_pos):
-    """Maybe create a power up at the given world position."""
+    """Loob juhusliku power-up'i antud asukohas (tõenäosusega powerup_drop_chance)."""
     if random.random() > powerup_drop_chance:
         return
 
@@ -201,7 +255,7 @@ def spawn_powerup(world_pos):
 
 
 def create_projectile(spawn_pos, direction):
-    """Create a projectile dictionary using the standard projectile speed."""
+    """Loob uue kuuli antud asukohast ja suunas."""
     return {
         "pos": pygame.Vector2(spawn_pos),
         "vel": direction * projectile_speed
@@ -209,7 +263,7 @@ def create_projectile(spawn_pos, direction):
 
 
 def apply_powerup(powerup_type):
-    """Activate the collected power up."""
+    """Aktiveerib korjatud power-up'i mõju."""
     global multi_shot_timer, speed_power_timer, rapid_fire_timer
 
     if powerup_type == "multi_shot":
@@ -220,15 +274,96 @@ def apply_powerup(powerup_type):
         rapid_fire_timer = powerup_duration
 
 
-# ============================================
-# Main game loop - Mängu tsükkel
-# ============================================
-while running:
-    # poll for events
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+def render_game_screen():
+    """Joonistab kogu mängu ekraani: tausta, kaardi, vaenlased, mängija, kuulid, efektid, HUD."""
 
+    # Neon grid background
+    textures.draw_background(screen, camera_offset)
+
+    # Kaardi piirjoon
+    pygame.draw.polygon(screen, "white", [(v[0] - camera_offset.x, v[1] - camera_offset.y) for v in map_vertices], 3)
+
+    # Vaenlased
+    for enemy_unit in enemies:
+        enemy_unit.draw(screen, camera_offset)
+
+    # Power-up'id
+    powerup_font = pygame.font.SysFont(None, 22)
+    for powerup in powerups:
+        config = POWERUP_TYPES[powerup["type"]]
+        screen_pos = (
+            int(powerup["pos"].x - camera_offset.x),
+            int(powerup["pos"].y - camera_offset.y),
+        )
+        pulse = 1 + 0.12 * math.sin(pygame.time.get_ticks() * 0.008)
+        radius = int(powerup_radius * pulse)
+        pygame.draw.circle(screen, config["color"], screen_pos, radius, 2)
+        label = powerup_font.render(config["label"], True, config["color"])
+        label_pos = (
+            screen_pos[0] - label.get_width() / 2,
+            screen_pos[1] - label.get_height() / 2,
+        )
+        screen.blit(label, label_pos)
+
+    # Mängija jälg - animated pixel fire trail
+    textures.draw_player_trail(screen, trail, player_pos, TRAIL_LIFETIME, camera_offset, 9)
+
+    # Mängija laev - sprite sheet based player model
+    textures.draw_player_sprite(
+        screen,
+        player_pos,
+        player_angle,
+        player_radius,
+        camera_offset,
+        player_invulnerable_timer > 0,
+    )
+
+    # Kuulid - glow line projectiles
+    for projectile in projectiles:
+        textures.draw_projectile(screen, projectile, camera_offset)
+
+    # Visuaalsed efektid
+    vfx_manager.draw(screen, camera_offset)
+
+    # Tervise ruudud
+    health_size = 24
+    health_gap = 8
+    health_width = player_max_health * health_size + (player_max_health - 1) * health_gap
+    health_x = screen.get_width() / 2 - health_width / 2
+    for health_idx in range(player_max_health):
+        square_x = int(health_x + health_idx * (health_size + health_gap))
+        textures.draw_health_square(screen, square_x, 10, health_size, health_idx < player_health)
+
+    # Aeg ja punktid
+    font = pygame.font.SysFont(None, 28)
+    time_text = font.render(f"Time: {difficulty_manager.get_elapsed_time()}", True, (255, 255, 255))
+    screen.blit(time_text, (10, 10))
+    score_text = font.render(f"Score: {score}", True, (255, 255, 255))
+    screen.blit(score_text, (10, 38))
+
+    # Aktiivsed power-up'id
+    active_powerups = []
+    if multi_shot_timer > 0:
+        active_powerups.append(f"Multi: {multi_shot_timer:.1f}s")
+    if speed_power_timer > 0:
+        active_powerups.append(f"Speed: {speed_power_timer:.1f}s")
+    if rapid_fire_timer > 0:
+        active_powerups.append(f"Fire Rate: {rapid_fire_timer:.1f}s")
+
+    for idx, powerup_text in enumerate(active_powerups):
+        rendered = font.render(powerup_text, True, (255, 255, 255))
+        screen.blit(rendered, (10, 66 + idx * 26))
+
+
+def update_game_logic():
+    """Uuendab kogu mängu loogikat: sisend, liikumine, laskmine, kokkupõrked, vaenlased.
+    Updates all game logic: input, movement, shooting, collisions, enemies."""
+    global player_pos, player_angle, target_angle, player_health, player_invulnerable_timer
+    global game_over, player_velocity, shoot_timer, multi_shot_timer
+    global speed_power_timer, rapid_fire_timer, projectiles, powerups, score
+    global enemies, trail_timer, trail, game_time
+
+    # Vähendame boonus taimereid
     multi_shot_timer = max(0.0, multi_shot_timer - dt)
     speed_power_timer = max(0.0, speed_power_timer - dt)
     rapid_fire_timer = max(0.0, rapid_fire_timer - dt)
@@ -250,7 +385,7 @@ while running:
         input_dir.x += 1
 
     # ============================================
-    # Drift movement - Liikumise triiv
+    # Drift movement - Triivliikumine
     # ============================================
     if input_dir.length() > 0:
         input_dir = input_dir.normalize()
@@ -259,16 +394,16 @@ while running:
             current_acceleration *= speed_power_multiplier
         player_velocity += input_dir * current_acceleration * dt
 
-    # Apply drag (friction) - friction slows velocity
+    # Hõõrdumine aeglustab kiirust
     player_velocity *= (1 - player_drag * dt)
 
-    # Apply velocity to position
+    # Kiirus rakendatakse asukohale
     player_pos += player_velocity * dt
 
-    # Keep player inside the map
+    # Hoia mängija kaardi sees
     player_pos = clamp_to_map(player_pos, map_vertices, player_radius)
 
-    # Smooth rotation toward movement direction
+    # Sujuv pööramine liikumissuunas
     move_dir = player_velocity
     if move_dir.length() > 0:
         move_dir_normalized = move_dir.normalize()
@@ -296,7 +431,7 @@ while running:
         if direction.length() != 0:
             direction = direction.normalize()
 
-            # Shoot from the edge of the player - Kuuli laskmine äärest
+            # Lase mängija äärest
             spawn_pos = player_pos + direction * (player_radius + projectile_radius)
 
             if multi_shot_timer > 0:
@@ -320,31 +455,27 @@ while running:
         old_positions.append(pygame.Vector2(projectile["pos"]))
         projectile["pos"] += projectile["vel"] * dt
 
-    # ============================================
-    # Wall collision VFX - Seina tabamuse efekt
-    # ============================================
+    # Seina kokkupõrke efektid
     for i, projectile in enumerate(projectiles):
         if not point_in_polygon((projectile["pos"].x, projectile["pos"].y), map_vertices):
-            # Spawn wall hit effect at the last valid position inside map
             vfx_manager.spawn_hit_effect(old_positions[i], "wall",
                                          direction=projectile["vel"].normalize())
 
-    # Remove projectiles that leave the map
+    # Eemalda kuulid, mis kaardilt välja lähevad
     projectiles = [
         p for p in projectiles
         if point_in_polygon((p["pos"].x, p["pos"].y), map_vertices)
     ]
 
     # ============================================
-    # Enemy system - Vaenlase süsteem
+    # Enemy system - Vaenlaste süsteem
     # ============================================
-    # Spawn new enemy waves
     if game_over:
         new_enemies = []
     else:
         new_enemies = spawn_manager.update(dt, enemies, player_pos)
 
-    # Apply difficulty speed scaling to new enemies
+    # Rakenda raskuse kiiruse skaleerimine uutele vaenlastele
     speed_mult = difficulty_manager.get_enemy_speed_multiplier()
     health_bonus = difficulty_manager.get_enemy_health_bonus()
     for enemy_unit in new_enemies:
@@ -354,13 +485,12 @@ while running:
 
     enemies.extend(new_enemies)
 
-    # Update enemies - move toward player
+    # Uuenda vaenlasi - liigu mängija poole
     if not game_over:
         for enemy_unit in enemies:
             enemy_unit.update(dt, player_pos)
 
-    # Enemy-player collision push - Vaenlase tõukumine
-    # Push overlapping enemies away from player so they can't go inside
+    # Vaenlase-mängija kokkupõrge ja tõukumine
     for enemy_unit in enemies:
         dist = enemy_unit.pos.distance_to(player_pos)
         min_dist = enemy_unit.radius + player_radius
@@ -378,7 +508,7 @@ while running:
             enemy_unit.pos = player_pos + push_dir * min_dist
 
     # ============================================
-    # Collision detection - Kokkupõrge
+    # Collision detection - Kokkupõrked
     # ============================================
     bullets_to_remove = set()
     enemies_to_remove = set()
@@ -393,20 +523,19 @@ while running:
                     enemies_to_remove.add(e_idx)
                     score += enemy_unit.score_value
                     spawn_powerup(enemy_unit.pos)
-                    # Spawn enemy hit effect at enemy position
                     vfx_manager.spawn_hit_effect(
                         pygame.Vector2(enemy_unit.pos), "enemy"
                     )
-                break  # Bullet can only hit one enemy
+                break
 
-    # Remove hit bullets and dead enemies
+    # Eemalda tabatud kuulid ja surnud vaenlased
     if bullets_to_remove:
         projectiles = [p for i, p in enumerate(projectiles) if i not in bullets_to_remove]
     if enemies_to_remove:
         enemies = [e for i, e in enumerate(enemies) if i not in enemies_to_remove]
 
     # ============================================
-    # Power up collection
+    # Power up collection - Power-up'ide korjamine
     # ============================================
     collected_powerups = set()
     for powerup_idx, powerup in enumerate(powerups if not game_over else []):
@@ -431,7 +560,6 @@ while running:
         trail.append((pygame.Vector2(player_pos), 0))
         trail_timer = 0
 
-    # Age trail points and remove expired ones
     trail = [(pos, age + dt) for pos, age in trail if age < TRAIL_LIFETIME]
 
     # ============================================
@@ -452,109 +580,75 @@ while running:
     # ============================================
     vfx_manager.update(dt)
 
+
+# ============================================
+# Main game loop - Mängu tsükkel
+# ============================================
+init_game()
+
+while running:
+    events = pygame.event.get()
+    for event in events:
+        if event.type == pygame.QUIT:
+            running = False
+
+    current_state = state_manager.current_state
+
     # ============================================
-    # Rendering - Renderdus
+    # PLAYING state - Aktiivne mäng
     # ============================================
+    if current_state == GameState.PLAYING:
+        # ESC klahv avab pausiekraani
+        for event in events:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                state_manager.push_state(GameState.PAUSED)
+                break
 
-    # Draw neon background
-    textures.draw_background(screen, camera_offset)
+        update_game_logic()
 
-    # Draw map border - Kaardi piir
-    pygame.draw.polygon(screen, "white", [(v[0] - camera_offset.x, v[1] - camera_offset.y) for v in map_vertices], 3)
+        # Kui mäng on läbi, vaheta game over ekraanile
+        if game_over and current_state == GameState.PLAYING:
+            game_over_screen.set_game_stats(score, difficulty_manager.get_elapsed_time())
+            state_manager.change_state(GameState.GAME_OVER)
 
-    # Draw enemies - Vaenlase renderdus
-    for enemy_unit in enemies:
-        enemy_unit.draw(screen, camera_offset)
+        render_game_screen()
 
-    # power upide ikoonid
-    powerup_font = pygame.font.SysFont(None, 22)
-    for powerup in powerups:
-        config = POWERUP_TYPES[powerup["type"]]
-        screen_pos = (
-            int(powerup["pos"].x - camera_offset.x),
-            int(powerup["pos"].y - camera_offset.y),
-        )
-        pulse = 1 + 0.12 * math.sin(pygame.time.get_ticks() * 0.008)
-        radius = int(powerup_radius * pulse)
-        pygame.draw.circle(screen, config["color"], screen_pos, radius, 2)
-        label = powerup_font.render(config["label"], True, config["color"])
-        label_pos = (
-            screen_pos[0] - label.get_width() / 2,
-            screen_pos[1] - label.get_height() / 2,
-        )
-        screen.blit(label, label_pos)
+    # ============================================
+    # PAUSED state - Mäng on peatatud
+    # ============================================
+    elif current_state == GameState.PAUSED:
+        # Joonista mäng taha ja pausi peale
+        render_game_screen()
+        pause_screen.handle_events(events)
+        pause_screen.update(dt)
+        pause_screen.draw(screen)
 
-    # Draw player trail - Mängija jälg
-    textures.draw_player_trail(screen, trail, player_pos, TRAIL_LIFETIME, camera_offset, 9)
-
-    # Draw player ship - Mängija laev
-    textures.draw_player_sprite(
-        screen,
-        player_pos,
-        player_angle,
-        player_radius,
-        camera_offset,
-        player_invulnerable_timer > 0,
-    )
-
-    # Draw projectiles - Kuulide renderdus
-    for projectile in projectiles:
-        textures.draw_projectile(screen, projectile, camera_offset)
-
-    # Draw VFX - Visuaalsed efektid
-    vfx_manager.draw(screen, camera_offset)
-
-    # Draw health squares
-    health_size = 24
-    health_gap = 8
-    health_width = player_max_health * health_size + (player_max_health - 1) * health_gap
-    health_x = screen.get_width() / 2 - health_width / 2
-    for health_idx in range(player_max_health):
-        square_x = int(health_x + health_idx * (health_size + health_gap))
-        textures.draw_health_square(screen, square_x, 10, health_size, health_idx < player_health)
-
-    # Draw elapsed time - Aja kuvamine
-    font = pygame.font.SysFont(None, 28)
-    time_text = font.render(f"Time: {difficulty_manager.get_elapsed_time()}", True, (255, 255, 255))
-    screen.blit(time_text, (10, 10))
-    score_text = font.render(f"Score: {score}", True, (255, 255, 255))
-    screen.blit(score_text, (10, 38))
-
-    active_powerups = []
-    if multi_shot_timer > 0:
-        active_powerups.append(f"Multi: {multi_shot_timer:.1f}s")
-    if speed_power_timer > 0:
-        active_powerups.append(f"Speed: {speed_power_timer:.1f}s")
-    if rapid_fire_timer > 0:
-        active_powerups.append(f"Fire Rate: {rapid_fire_timer:.1f}s")
-
-    for idx, powerup_text in enumerate(active_powerups):
-        rendered = font.render(powerup_text, True, (255, 255, 255))
-        screen.blit(rendered, (10, 66 + idx * 26))
-
-    if game_over:
-        game_over_font = pygame.font.SysFont(None, 72)
-        game_over_text = game_over_font.render("GAME OVER", True, (255, 80, 80))
-        score_final_text = font.render(f"Final Score: {score}", True, (255, 255, 255))
-        screen.blit(
-            game_over_text,
-            (
-                screen.get_width() / 2 - game_over_text.get_width() / 2,
-                screen.get_height() / 2 - game_over_text.get_height(),
-            ),
-        )
-        screen.blit(
-            score_final_text,
-            (
-                screen.get_width() / 2 - score_final_text.get_width() / 2,
-                screen.get_height() / 2 + 10,
-            ),
-        )
+    # ============================================
+    # MENU / SETTINGS / UPGRADES / GAME_OVER states - Menüü ekraanid
+    # ============================================
+    else:
+        if current_state == GameState.MENU:
+            main_menu_screen.handle_events(events)
+            main_menu_screen.update(dt)
+            main_menu_screen.draw(screen)
+            if main_menu_screen.is_quit_requested():
+                running = False
+        elif current_state == GameState.SETTINGS:
+            settings_screen.handle_events(events)
+            settings_screen.update(dt)
+            settings_screen.draw(screen)
+        elif current_state == GameState.UPGRADES:
+            upgrades_screen.handle_events(events)
+            upgrades_screen.update(dt)
+            upgrades_screen.draw(screen)
+        elif current_state == GameState.GAME_OVER:
+            game_over_screen.handle_events(events)
+            game_over_screen.update(dt)
+            game_over_screen.draw(screen)
 
     # flip() the display to put your work on screen
     pygame.display.flip()
 
-    # limits FPS to 60
     dt = clock.tick(60) / 1000
 
 pygame.quit()
