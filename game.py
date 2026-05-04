@@ -6,6 +6,7 @@ from enemy import Enemy
 from spawn_manager import SpawnManager
 from difficulty_manager import DifficultyManager
 from vfx_manager import VFXManager
+import textures
 
 # ============================================
 # pygame setup - Pygame seadistus
@@ -217,16 +218,6 @@ def apply_powerup(powerup_type):
         speed_power_timer = powerup_duration
     elif powerup_type == "rapid_fire":
         rapid_fire_timer = powerup_duration
-
-
-def draw_health_square(surface, x, y, size, filled):
-    """Draw a small square health pip."""
-    color = (255, 70, 95) if filled else (80, 80, 80)
-    outline = (255, 120, 135) if filled else (120, 120, 120)
-    rect = pygame.Rect(x, y, size, size)
-
-    pygame.draw.rect(surface, color, rect)
-    pygame.draw.rect(surface, outline, rect, 2)
 
 
 # ============================================
@@ -465,8 +456,8 @@ while running:
     # Rendering - Renderdus
     # ============================================
 
-    # fill the screen with black to wipe away anything from last frame
-    screen.fill("black")
+    # Draw neon background
+    textures.draw_background(screen, camera_offset)
 
     # Draw map border - Kaardi piir
     pygame.draw.polygon(screen, "white", [(v[0] - camera_offset.x, v[1] - camera_offset.y) for v in map_vertices], 3)
@@ -494,43 +485,21 @@ while running:
         screen.blit(label, label_pos)
 
     # Draw player trail - Mängija jälg
-    trail_radius = int(player_radius * 0.35)
-    for pos, age in trail:
-        screen_pos = (pos.x - camera_offset.x, pos.y - camera_offset.y)
-        alpha = int(150 * (1 - age / TRAIL_LIFETIME))
-        trail_surf = pygame.Surface((trail_radius * 2, trail_radius * 2))
-        trail_surf.set_colorkey((0, 0, 0))
-        trail_surf.set_alpha(alpha)
-        pygame.draw.circle(trail_surf, (255, 255, 255), (trail_radius, trail_radius), trail_radius)
-        screen.blit(trail_surf, (screen_pos[0] - trail_radius, screen_pos[1] - trail_radius))
+    textures.draw_player_trail(screen, trail, player_pos, TRAIL_LIFETIME, camera_offset, 9)
 
-    # Draw player arrow - Mängija nool
-    arrow_points = [
-        (0, -player_radius),
-        (-player_radius * 0.5, player_radius * 0.3),
-        (0, player_radius * 0.5),
-        (player_radius * 0.5, player_radius * 0.3),
-    ]
-
-    arrow_surface = pygame.Surface((player_radius * 2, player_radius * 2), pygame.SRCALPHA)
-    arrow_surface_points = [
-        (p[0] + player_radius, p[1] + player_radius) for p in arrow_points
-    ]
-    arrow_alpha = 180
-    if player_invulnerable_timer > 0 and int(pygame.time.get_ticks() / 120) % 2 == 0:
-        arrow_alpha = 80
-    pygame.draw.polygon(arrow_surface, (255, 255, 255, arrow_alpha), arrow_surface_points)
-    rotated_arrow = pygame.transform.rotate(arrow_surface, -player_angle)
-    screen_x = player_pos.x - camera_offset.x - rotated_arrow.get_width() / 2
-    screen_y = player_pos.y - camera_offset.y - rotated_arrow.get_height() / 2
-    screen.blit(rotated_arrow, (screen_x, screen_y))
+    # Draw player ship - Mängija laev
+    textures.draw_player_sprite(
+        screen,
+        player_pos,
+        player_angle,
+        player_radius,
+        camera_offset,
+        player_invulnerable_timer > 0,
+    )
 
     # Draw projectiles - Kuulide renderdus
     for projectile in projectiles:
-        end_pos = projectile["pos"] + projectile["vel"].normalize() * 15
-        start_screen = (projectile["pos"].x - camera_offset.x, projectile["pos"].y - camera_offset.y)
-        end_screen = (end_pos.x - camera_offset.x, end_pos.y - camera_offset.y)
-        pygame.draw.line(screen, "yellow", start_screen, end_screen, 3)
+        textures.draw_projectile(screen, projectile, camera_offset)
 
     # Draw VFX - Visuaalsed efektid
     vfx_manager.draw(screen, camera_offset)
@@ -542,7 +511,7 @@ while running:
     health_x = screen.get_width() / 2 - health_width / 2
     for health_idx in range(player_max_health):
         square_x = int(health_x + health_idx * (health_size + health_gap))
-        draw_health_square(screen, square_x, 10, health_size, health_idx < player_health)
+        textures.draw_health_square(screen, square_x, 10, health_size, health_idx < player_health)
 
     # Draw elapsed time - Aja kuvamine
     font = pygame.font.SysFont(None, 28)
