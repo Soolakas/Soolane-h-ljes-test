@@ -26,8 +26,14 @@ class SettingsScreen(BaseScreen):
 
     def _build_ui(self):
         """Loob kõik seadete ekraani elemendid õige paigutusega.
+        Kasutab tegelikku ekraani suurust, et paneel jääks alati keskele.
         Kõik elemendid mahuvad paneeli sisse ilma kattumisteta."""
-        screen_w, screen_h = 1280, 720
+        # Kasutab tegelikku ekraani suurust (oluline pärast resolutsiooni muutust)
+        if self.screen is not None:
+            screen_w, screen_h = self.screen.get_size()
+        else:
+            screen_w, screen_h = 1280, 720
+
         panel_w = 500                              # Paneeli laius (kitsam, et mahub paremini)
         panel_x = (screen_w - panel_w) / 2         # Horisontaalne tsentreerimine
         panel_y = 30                               # Ülemine marginaal
@@ -123,7 +129,8 @@ class SettingsScreen(BaseScreen):
 
     def _cycle_resolution(self):
         """Vahetab resolutsiooni järgmisele väärtusele ringiga.
-        Kasutab pygame.display.set_mode() uue resolutsiooni rakendamiseks."""
+        Kasutab pygame.display.set_mode() uue resolutsiooni rakendamiseks.
+        Säilitab täisekraani oleku - kui on täisekraanil, jääb ka peale muutust."""
         current = self.settings.resolution
         idx = (self._resolutions.index(current) + 1) % len(self._resolutions) if current in self._resolutions else 0
         new_res = self._resolutions[idx]
@@ -131,8 +138,11 @@ class SettingsScreen(BaseScreen):
         self._res_btn.text = f"Resolution: {new_res[0]}x{new_res[1]}"
 
         # Rakendab uue resolutsiooni pygame-s
+        # Oluline: kui on täisekraanil, tuleb lippu säilitada,
+        # sest set_mode() lähtestab ekraani ja eemaldab täisekraani muidu
         if self.screen is not None:
-            pygame.display.set_mode(new_res)
+            flags = pygame.FULLSCREEN if self.settings.fullscreen else 0
+            pygame.display.set_mode(new_res, flags)
 
         # Salvestab seadme automaatselt
         self.settings.save()
