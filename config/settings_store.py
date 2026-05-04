@@ -1,16 +1,18 @@
 import json
 import os
 
+# Seadete faili nimi - Settings file name
 SETTINGS_FILE = "settings.json"
 
+# Vaikimisi seaded, kui faili ei eksisteeri või on vigane
 DEFAULT_SETTINGS = {
-    "music_volume": 0.7,
-    "sfx_volume": 0.8,
-    "fullscreen": False,
-    "resolution": [1280, 720],
-    "show_fps": False,
-    "particle_quality": "high",
-    "key_bindings": {
+    "music_volume": 0.7,      # Muusika helitugevus
+    "sfx_volume": 0.8,        # Heliefektide helitugevus
+    "fullscreen": False,       # Täisekraani režiim
+    "resolution": [1280, 720], # Ekraani resolutsioon
+    "show_fps": False,         # Kaadrisageduse kuvamine
+    "particle_quality": "high",# Osakeste kvaliteet (low/medium/high)
+    "key_bindings": {          # Klahvide seaded
         "move_up": "w",
         "move_down": "s",
         "move_left": "a",
@@ -20,20 +22,23 @@ DEFAULT_SETTINGS = {
 
 
 class GameSettings:
-    """Manages game settings with persistent JSON storage."""
+    """Haldab mängu seadeid püsiva JSON salvestusega."""
 
     def __init__(self):
         self._data = dict(DEFAULT_SETTINGS)
         self.load()
 
     def get(self, key, default=None):
+        """Tagastab seadme väärtuse võtme järgi."""
         return self._data.get(key, default)
 
     def set(self, key, value):
+        """Seab seadme väärtuse."""
         self._data[key] = value
 
     @property
     def music_volume(self):
+        """Muusika helitugevus."""
         return self._data["music_volume"]
 
     @music_volume.setter
@@ -42,6 +47,7 @@ class GameSettings:
 
     @property
     def sfx_volume(self):
+        """Heliefektide helitugevus."""
         return self._data["sfx_volume"]
 
     @sfx_volume.setter
@@ -50,6 +56,7 @@ class GameSettings:
 
     @property
     def fullscreen(self):
+        """Täisekraani režiim."""
         return self._data["fullscreen"]
 
     @fullscreen.setter
@@ -58,6 +65,7 @@ class GameSettings:
 
     @property
     def resolution(self):
+        """Ekraani resolutsioon."""
         return tuple(self._data["resolution"])
 
     @resolution.setter
@@ -66,6 +74,7 @@ class GameSettings:
 
     @property
     def show_fps(self):
+        """Kas kuvada kaadrisagedust."""
         return self._data["show_fps"]
 
     @show_fps.setter
@@ -74,6 +83,7 @@ class GameSettings:
 
     @property
     def particle_quality(self):
+        """Osakeste kvaliteedi tase."""
         return self._data["particle_quality"]
 
     @particle_quality.setter
@@ -82,6 +92,7 @@ class GameSettings:
 
     @property
     def key_bindings(self):
+        """Klahvide seaded."""
         return self._data["key_bindings"]
 
     @key_bindings.setter
@@ -89,6 +100,7 @@ class GameSettings:
         self._data["key_bindings"] = value
 
     def load(self):
+        """Laeb seaded failist. Kui faili pole või on vigane, kasutab vaikimisi seadeid."""
         if os.path.exists(SETTINGS_FILE):
             try:
                 with open(SETTINGS_FILE, "r") as f:
@@ -100,5 +112,6 @@ class GameSettings:
                 self._data = dict(DEFAULT_SETTINGS)
 
     def save(self):
+        """Salvestab seaded faili."""
         with open(SETTINGS_FILE, "w") as f:
             json.dump(self._data, f, indent=2)

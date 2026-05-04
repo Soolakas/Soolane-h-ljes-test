@@ -6,25 +6,29 @@ from menu.state_manager import GameState
 
 
 class UpgradesScreen(BaseScreen):
-    """Placeholder upgrades screen ready for future implementation."""
+    """Uuenduste ekraan (koht tulevastele püsivõimendustele).
+    Placeholder upgrades screen ready for future implementation."""
 
     def __init__(self, state_manager, settings):
         super().__init__(state_manager, settings)
-        self.buttons = []
-        self.labels = []
-        self._title_font = pygame.font.SysFont(None, 64)
-        self._subtitle_font = pygame.font.SysFont(None, 32)
+        self.buttons = []                          # Nuppude nimekiri
+        self.labels = []                           # Siltide nimekiri
+        self._title_font = pygame.font.SysFont(None, 64)   # Pealkirja font
+        self._subtitle_font = pygame.font.SysFont(None, 32) # Alapealkirja font
         self._build_ui()
 
     def _build_ui(self):
+        """Loob uuenduste ekraani elemendid: tagasi-nupp, pealkiri ja 'tulekul' tekst."""
         screen_w, screen_h = 1280, 720
 
+        # Tagasi-nupp - viib põhimenüüsse
         self.buttons.append(
             UIButton("BACK", (30, 20), (100, 40),
                      callback=lambda: self.state_manager.change_state(GameState.MENU),
                      font_size=22)
         )
 
+        # Pealkiri ja tulekul teade
         self.labels.append(
             UILabel("UPGRADES", (screen_w / 2, screen_h * 0.3), font_size=56, center=True)
         )
@@ -36,14 +40,17 @@ class UpgradesScreen(BaseScreen):
         )
 
     def handle_events(self, events):
+        """Töötleb kõiki sisendsündmuseid nuppude jaoks."""
         for event in events:
             for btn in self.buttons:
                 btn.handle_event(event)
 
     def update(self, dt):
+        """Uuendab ekraani olekut. Hetkel pole vaja midagi teha."""
         pass
 
     def draw(self, screen):
+        """Joonistab uuenduste ekraani: taust, sildid ja nupud."""
         screen.fill((15, 15, 25))
 
         for label in self.labels:

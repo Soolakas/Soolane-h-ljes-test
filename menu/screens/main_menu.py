@@ -5,22 +5,24 @@ from menu.state_manager import GameState
 
 
 class MainMenuScreen(BaseScreen):
-    """Main menu screen with title, play, settings, upgrades, and exit buttons."""
+    """Põhimenüü ekraan pealkirja, mängu, seadete, uuenduste ja väljumise nuppudega.
+    Main menu screen with title, play, settings, upgrades, and exit buttons."""
 
     def __init__(self, state_manager, settings):
         super().__init__(state_manager, settings)
-        self.buttons = []
-        self._title_font = pygame.font.SysFont(None, 80)
-        self._subtitle_font = pygame.font.SysFont(None, 28)
-        self._quit_requested = False
+        self.buttons = []                          # Nuppude nimekiri
+        self._title_font = pygame.font.SysFont(None, 80)   # Pealkirja font
+        self._subtitle_font = pygame.font.SysFont(None, 28) # Alapealkirja font
+        self._quit_requested = False               # Kas kasutaja soovib väljuda
         self._build_buttons()
 
     def _build_buttons(self):
+        """Loob kõik menüünupud ja seab nende asukohad."""
         screen_w, screen_h = 1280, 720
-        btn_w, btn_h = 280, 55
-        btn_x = (screen_w - btn_w) / 2
-        start_y = screen_h * 0.55
-        gap = 15
+        btn_w, btn_h = 280, 55                     # Nupu laius ja kõrgus
+        btn_x = (screen_w - btn_w) / 2             # Horisontaalne tsentreerimine
+        start_y = screen_h * 0.55                  # Nuppude alguse Y-koordinaat
+        gap = 15                                   # Vahe nuppude vahel
 
         self.buttons = [
             UIButton("PLAY", (btn_x, start_y), (btn_w, btn_h),
@@ -38,17 +40,21 @@ class MainMenuScreen(BaseScreen):
         ]
 
     def _on_exit_clicked(self):
+        """Väljumisnupu klikkimise töötleja."""
         self._quit_requested = True
 
     def handle_events(self, events):
+        """Töötleb kõiki sisendsündmuseid nuppude jaoks."""
         for event in events:
             for btn in self.buttons:
                 btn.handle_event(event)
 
     def update(self, dt):
+        """Uuendab menüü olekut. Hetkel pole vaja midagi teha."""
         pass
 
     def draw(self, screen):
+        """Joonistab põhimenüü: taust, kaunistused, pealkiri ja nupud."""
         screen.fill((15, 15, 25))
         self._draw_background_decorations(screen)
 
@@ -66,6 +72,7 @@ class MainMenuScreen(BaseScreen):
             btn.draw(screen)
 
     def _draw_background_decorations(self, screen):
+        """Joonistab taustale kaheksanurkse geomeetrilise kujundi kaunistuseks."""
         screen_w, screen_h = screen.get_size()
         center = (screen_w / 2, screen_h * 0.38)
         import math
@@ -86,4 +93,5 @@ class MainMenuScreen(BaseScreen):
             pygame.draw.line(screen, (30, 30, 50), (x1, y1), (x2, y2), 1)
 
     def is_quit_requested(self):
+        """Tagastab True, kui kasutaja on vajutanud väljumisnuppu."""
         return self._quit_requested

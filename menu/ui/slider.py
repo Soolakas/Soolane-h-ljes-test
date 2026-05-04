@@ -2,7 +2,7 @@ import pygame
 
 
 class UISlider:
-    """Draggable slider for adjusting numeric values."""
+    """Lohistatav liugur arvväärtuste muutmiseks. Draggable slider for adjusting numeric values."""
 
     def __init__(
         self,
@@ -19,25 +19,26 @@ class UISlider:
         text_color=(255, 255, 255),
         font_size=20,
     ):
-        self.position = pygame.Vector2(position)
-        self.width = width
-        self.value = value
-        self.min_val = min_val
-        self.max_val = max_val
-        self.label = label
-        self.callback = callback
-        self.track_color = track_color
-        self.fill_color = fill_color
-        self.handle_color = handle_color
-        self.text_color = text_color
-        self.font_size = font_size
-        self._dragging = False
+        self.position = pygame.Vector2(position)   # Asukoht ekraanil
+        self.width = width                           # Liuguririba laius
+        self.value = value                           # Praegune väärtus
+        self.min_val = min_val                       # Minimaalne väärtus
+        self.max_val = max_val                       # Maksimaalne väärtus
+        self.label = label                           # Sildi tekst (nt "Music Volume")
+        self.callback = callback                     # Funktsioon, mida kutsutakse väärtuse muutmisel
+        self.track_color = track_color               # Riba taustavärv
+        self.fill_color = fill_color                 # Täidetud osa värv
+        self.handle_color = handle_color             # Nupu (käepideme) värv
+        self.text_color = text_color                 # Teksti värv
+        self.font_size = font_size                   # Teksti suurus
+        self._dragging = False                       # Kas kasutaja parasjagu lohistab
         self._font = pygame.font.SysFont(None, font_size)
-        self._handle_radius = 8
-        self._track_height = 10
+        self._handle_radius = 8                      # Käepideme raadius
+        self._track_height = 10                      # Riba kõrgus
 
     @property
     def _track_rect(self):
+        """Tagastab liuguririba ristkülikuna."""
         return pygame.Rect(
             int(self.position.x),
             int(self.position.y),
@@ -46,15 +47,18 @@ class UISlider:
         )
 
     def _value_to_x(self):
+        """Teisendab praeguse väärtuse ekraani X-koordinaadiks."""
         ratio = (self.value - self.min_val) / (self.max_val - self.min_val)
         return self.position.x + ratio * self.width
 
     def _x_to_value(self, x):
+        """Teisendab X-koordinaadi tagasi väärtuseks."""
         ratio = (x - self.position.x) / self.width
         ratio = max(0.0, min(1.0, ratio))
         return self.min_val + ratio * (self.max_val - self.min_val)
 
     def handle_event(self, event):
+        """Töötleb hiire sündmuse. Tagastab True, kui liugurit muudeti."""
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             handle_x = self._value_to_x()
             handle_rect = pygame.Rect(
@@ -82,6 +86,7 @@ class UISlider:
         return False
 
     def draw(self, screen):
+        """Joonistab liuguri: riba, täidetud osa, käepideme ja sildi."""
         track = self._track_rect
         pygame.draw.rect(screen, self.track_color, track, border_radius=5)
 
