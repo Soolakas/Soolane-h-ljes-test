@@ -118,7 +118,6 @@ class SettingsScreen(BaseScreen):
         """Vahetab täisekraani režiimi sisse ja välja.
         Kasutab pygame.display.toggle_fullscreen() ekraani režiimi muutmiseks."""
         self.settings.fullscreen = not self.settings.fullscreen
-        self._fullscreen_btn.text = "Fullscreen: ON" if self.settings.fullscreen else "Fullscreen: OFF"
 
         # Rakendab täisekraani muutuse pygame-s
         if self.screen is not None:
@@ -126,6 +125,11 @@ class SettingsScreen(BaseScreen):
 
         # Salvestab seadme automaatselt
         self.settings.save()
+
+        # Ehitab ekraani uuesti üles, et paneel jääks keskele uuel ekraanil
+        self.labels.clear()
+        self.buttons.clear()
+        self._build_ui()
 
     def _cycle_resolution(self):
         """Vahetab resolutsiooni järgmisele väärtusele ringiga.
@@ -135,7 +139,6 @@ class SettingsScreen(BaseScreen):
         idx = (self._resolutions.index(current) + 1) % len(self._resolutions) if current in self._resolutions else 0
         new_res = self._resolutions[idx]
         self.settings.resolution = new_res
-        self._res_btn.text = f"Resolution: {new_res[0]}x{new_res[1]}"
 
         # Rakendab uue resolutsiooni pygame-s
         # Oluline: kui on täisekraanil, tuleb lippu säilitada,
@@ -147,17 +150,16 @@ class SettingsScreen(BaseScreen):
         # Salvestab seadme automaatselt
         self.settings.save()
 
+        # Ehitab ekraani uuesti üles, et paneel jääks keskele uuel ekraanil
+        self.labels.clear()
+        self.buttons.clear()
+        self._build_ui()
+
     def _reset_settings(self):
         """Lähtestab kõik seaded vaikeväärtustele ja salvestab need."""
         self.settings.reset()
 
-        # Uuendab nuppude tekstid peale lähtestamist
-        fs_text = "Fullscreen: ON" if self.settings.fullscreen else "Fullscreen: OFF"
-        self._fullscreen_btn.text = fs_text
-        res = self.settings.resolution
-        self._res_btn.text = f"Resolution: {res[0]}x{res[1]}"
-
-        # Eemaldab vanad sildid ja ehitab ekraani uuesti üles
+        # Ehitab ekraani täielikult uuesti üles uute seadete ja keskmise paneeliga
         self.labels.clear()
         self.buttons.clear()
         self._build_ui()
