@@ -14,6 +14,7 @@ from menu.screens.upgrades import UpgradesScreen
 from menu.screens.pause import PauseScreen
 from menu.screens.game_over import GameOverScreen
 from config.settings_store import GameSettings
+import textures
 
 # ============================================
 # pygame setup - Pygame seadistus
@@ -631,6 +632,8 @@ while running:
             running = False
 
     current_state = state_manager.current_state
+    # Draw neon background
+    textures.draw_background(screen, camera_offset)
 
     # ============================================
     # PLAYING state - Aktiivne mäng
@@ -689,6 +692,15 @@ while running:
             game_over_screen.update(dt)
             game_over_screen.draw(screen)
 
+    # Draw player ship - Mängija laev
+    textures.draw_player_sprite(
+        screen,
+        player_pos,
+        player_angle,
+        player_radius,
+        camera_offset,
+        player_invulnerable_timer > 0,
+    )
     # Draw player ship - Mängija laev
     textures.draw_player_sprite(
         screen,
