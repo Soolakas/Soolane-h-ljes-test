@@ -6,6 +6,7 @@ from enemy import Enemy
 from spawn_manager import SpawnManager
 from difficulty_manager import DifficultyManager
 from vfx_manager import VFXManager
+import textures
 from menu.state_manager import StateManager, GameState
 from menu.screens.main_menu import MainMenuScreen
 from menu.screens.settings import SettingsScreen
@@ -369,6 +370,14 @@ def render_game_screen():
     screen.blit(time_text, (10, 10))
     score_text = font.render(f"Score: {score}", True, (255, 255, 255))
     screen.blit(score_text, (10, 38))
+# ============================================
+# Main game loop - Mängu tsükkel
+# ============================================
+while running:
+    # poll for events
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
 
     # Aktiivsed power-up'id
     active_powerups = []
@@ -633,6 +642,9 @@ while running:
                 state_manager.push_state(GameState.PAUSED)
                 break
 
+    # Draw neon background
+    textures.draw_background(screen, camera_offset)
+
         update_game_logic()
 
         # Kui mäng on läbi, vaheta game over ekraanile
@@ -651,6 +663,8 @@ while running:
         pause_screen.handle_events(events)
         pause_screen.update(dt)
         pause_screen.draw(screen)
+    # Draw player trail - Mängija jälg
+    textures.draw_player_trail(screen, trail, player_pos, TRAIL_LIFETIME, camera_offset, 9)
 
     # ============================================
     # MENU / SETTINGS / UPGRADES / GAME_OVER states - Menüü ekraanid
@@ -675,6 +689,71 @@ while running:
             game_over_screen.update(dt)
             game_over_screen.draw(screen)
 
+    # Draw player ship - Mängija laev
+    textures.draw_player_sprite(
+        screen,
+        player_pos,
+        player_angle,
+        player_radius,
+        camera_offset,
+        player_invulnerable_timer > 0,
+    )
+
+    # Draw projectiles - Kuulide renderdus
+    for projectile in projectiles:
+        textures.draw_projectile(screen, projectile, camera_offset)
+
+    # Draw VFX - Visuaalsed efektid
+    vfx_manager.draw(screen, camera_offset)
+
+    # Draw health squares
+    health_size = 24
+    health_gap = 8
+    health_width = player_max_health * health_size + (player_max_health - 1) * health_gap
+    health_x = screen.get_width() / 2 - health_width / 2
+    for health_idx in range(player_max_health):
+        square_x = int(health_x + health_idx * (health_size + health_gap))
+        textures.draw_health_square(screen, square_x, 10, health_size, health_idx < player_health)
+
+    # Draw elapsed time - Aja kuvamine
+    font = pygame.font.SysFont(None, 28)
+    time_text = font.render(f"Time: {difficulty_manager.get_elapsed_time()}", True, (255, 255, 255))
+    screen.blit(time_text, (10, 10))
+    score_text = font.render(f"Score: {score}", True, (255, 255, 255))
+    screen.blit(score_text, (10, 38))
+
+    active_powerups = []
+    if multi_shot_timer > 0:
+        active_powerups.append(f"Multi: {multi_shot_timer:.1f}s")
+    if speed_power_timer > 0:
+        active_powerups.append(f"Speed: {speed_power_timer:.1f}s")
+    if rapid_fire_timer > 0:
+        active_powerups.append(f"Fire Rate: {rapid_fire_timer:.1f}s")
+
+    for idx, powerup_text in enumerate(active_powerups):
+        rendered = font.render(powerup_text, True, (255, 255, 255))
+        screen.blit(rendered, (10, 66 + idx * 26))
+
+    if game_over:
+        game_over_font = pygame.font.SysFont(None, 72)
+        game_over_text = game_over_font.render("GAME OVER", True, (255, 80, 80))
+        score_final_text = font.render(f"Final Score: {score}", True, (255, 255, 255))
+        screen.blit(
+            game_over_text,
+            (
+                screen.get_width() / 2 - game_over_text.get_width() / 2,
+                screen.get_height() / 2 - game_over_text.get_height(),
+            ),
+        )
+        screen.blit(
+            score_final_text,
+            (
+                screen.get_width() / 2 - score_final_text.get_width() / 2,
+                screen.get_height() / 2 + 10,
+            ),
+        )
+
+    # flip() the display to put your work on screen
     pygame.display.flip()
 
     dt = clock.tick(60) / 1000
