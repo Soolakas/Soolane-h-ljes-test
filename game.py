@@ -51,7 +51,7 @@ for i in range(8):
 # ============================================
 # Iga menüüekraan on eraldi klass, mis haldab oma nuppe ja joonistamist
 main_menu_screen = MainMenuScreen(state_manager, settings)
-settings_screen = SettingsScreen(state_manager, settings)
+settings_screen = SettingsScreen(state_manager, settings, screen)
 upgrades_screen = UpgradesScreen(state_manager, settings)
 pause_screen = PauseScreen(state_manager, settings)
 game_over_screen = GameOverScreen(state_manager, settings)

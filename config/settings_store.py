@@ -6,12 +6,10 @@ SETTINGS_FILE = "settings.json"
 
 # Vaikimisi seaded, kui faili ei eksisteeri või on vigane
 DEFAULT_SETTINGS = {
-    "music_volume": 0.7,      # Muusika helitugevus
-    "sfx_volume": 0.8,        # Heliefektide helitugevus
+    "music_volume": 0.7,      # Muusika helitugevus (tulevikuks, hetkel kasutusel pole)
+    "sfx_volume": 0.8,        # Heliefektide helitugevus (tulevikuks, hetkel kasutusel pole)
     "fullscreen": False,       # Täisekraani režiim
     "resolution": [1280, 720], # Ekraani resolutsioon
-    "show_fps": False,         # Kaadrisageduse kuvamine
-    "particle_quality": "high",# Osakeste kvaliteet (low/medium/high)
     "key_bindings": {          # Klahvide seaded
         "move_up": "w",
         "move_down": "s",
@@ -38,7 +36,7 @@ class GameSettings:
 
     @property
     def music_volume(self):
-        """Muusika helitugevus."""
+        """Muusika helitugevus (tulevikuks)."""
         return self._data["music_volume"]
 
     @music_volume.setter
@@ -47,7 +45,7 @@ class GameSettings:
 
     @property
     def sfx_volume(self):
-        """Heliefektide helitugevus."""
+        """Heliefektide helitugevus (tulevikuks)."""
         return self._data["sfx_volume"]
 
     @sfx_volume.setter
@@ -71,24 +69,6 @@ class GameSettings:
     @resolution.setter
     def resolution(self, value):
         self._data["resolution"] = list(value)
-
-    @property
-    def show_fps(self):
-        """Kas kuvada kaadrisagedust."""
-        return self._data["show_fps"]
-
-    @show_fps.setter
-    def show_fps(self, value):
-        self._data["show_fps"] = value
-
-    @property
-    def particle_quality(self):
-        """Osakeste kvaliteedi tase."""
-        return self._data["particle_quality"]
-
-    @particle_quality.setter
-    def particle_quality(self, value):
-        self._data["particle_quality"] = value
 
     @property
     def key_bindings(self):
@@ -115,3 +95,8 @@ class GameSettings:
         """Salvestab seaded faili."""
         with open(SETTINGS_FILE, "w") as f:
             json.dump(self._data, f, indent=2)
+
+    def reset(self):
+        """Lähtestab kõik seaded vaikeväärtustele ja salvestab need."""
+        self._data = dict(DEFAULT_SETTINGS)
+        self.save()
