@@ -15,6 +15,7 @@ from menu.screens.pause import PauseScreen
 from menu.screens.game_over import GameOverScreen
 from config.settings_store import GameSettings
 import textures
+import textures
 
 # ============================================
 # pygame setup - Pygame seadistus
@@ -631,6 +632,8 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
+    # Draw neon background
+    textures.draw_background(screen, camera_offset)
     current_state = state_manager.current_state
     # Draw neon background
     textures.draw_background(screen, camera_offset)
@@ -669,6 +672,15 @@ while running:
     # Draw player trail - Mängija jälg
     textures.draw_player_trail(screen, trail, player_pos, TRAIL_LIFETIME, camera_offset, 9)
 
+    # Draw player ship - Mängija laev
+    textures.draw_player_sprite(
+        screen,
+        player_pos,
+        player_angle,
+        player_radius,
+        camera_offset,
+        player_invulnerable_timer > 0,
+    )
     # ============================================
     # MENU / SETTINGS / UPGRADES / GAME_OVER states - Menüü ekraanid
     # ============================================
