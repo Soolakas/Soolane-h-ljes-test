@@ -2,6 +2,7 @@ import pygame
 from menu.screens.base_screen import BaseScreen
 from menu.ui.button import UIButton
 from menu.ui.label import UILabel
+from menu.ui.slider import UISlider
 from menu.state_manager import GameState
 
 
@@ -9,18 +10,21 @@ class SettingsScreen(BaseScreen):
     """Seadete ekraan kuva, juhtelementide ja lähtestamise nuppudega.
     Settings screen with display, controls, and reset settings button."""
 
-    def __init__(self, state_manager, settings, screen=None):
+    def __init__(self, state_manager, settings, screen=None, sound_manager=None):
         """Algustab seadete ekraani.
         
         Args:
             state_manager: Olekuhaldur ekraanivahetuste jaoks
             settings: Mängu seadete objekt
             screen: Pygame ekraanipind (täisekraani ja resolutsiooni muutmiseks)
+            sound_manager: SoundManager instance for volume control
         """
         super().__init__(state_manager, settings)
         self.screen = screen                    # Pygame ekraanipind kuva muutuste jaoks
+        self.sound_manager = sound_manager      # Helihaldur helitugevuse juhtimiseks
         self.buttons = []                        # Nuppude nimekiri
         self.labels = []                         # Siltide nimekiri
+        self.sliders = []                        # Liugurite nimekiri
         self._title_font = pygame.font.SysFont(None, 48)  # Pealkirja font
         self._build_ui()
 
@@ -91,6 +95,22 @@ class SettingsScreen(BaseScreen):
         y = control_y + 45
 
         # ============================================
+        # Audio seaded - Audio section
+        # ============================================
+        self.labels.append(UILabel("AUDIO", (content_x, y), font_size=26))
+        y += 32
+
+        self._sfx_volume_slider = UISlider(
+            (content_x, y),
+            width=280,
+            value=self.settings.sfx_volume,           # Algne väärtus salvestatud seadetest - Initial value from saved settings
+            label="SFX Volume",                       # Heliefektide helitugevuse silt - SFX volume label
+            callback=self._on_sfx_volume_changed,     # Tagasihelistamine helitugevuse muutmisel - Callback on volume change
+        )
+        self.sliders.append(self._sfx_volume_slider)  # Lisa liugurite nimekirja - Add to sliders list
+        y += 60
+
+        # ============================================
         # Lähtesta seaded - Reset Settings button
         # ============================================
         # Tagasi-nupp - viib põhimenüüsse
@@ -114,6 +134,18 @@ class SettingsScreen(BaseScreen):
                      font_size=20, bg_color=(80, 40, 40), hover_color=(110, 50, 50))
         )
 
+    def _on_sfx_volume_changed(self, value):
+        """Uuendab heliefektide helitugevust reaalajas.
+        Updates sound effects volume in real-time.
+        
+        Args:
+            value (float): Uus helitugevus 0.0 kuni 1.0.
+                New volume from 0.0 to 1.0.
+        """
+        self.settings.sfx_volume = value
+        if self.sound_manager:
+            self.sound_manager.set_volume(value)
+
     def _toggle_fullscreen(self):
         """Vahetab täisekraani režiimi sisse ja välja.
         Kasutab pygame.display.toggle_fullscreen() ekraani režiimi muutmiseks."""
@@ -129,6 +161,7 @@ class SettingsScreen(BaseScreen):
         # Ehitab ekraani uuesti üles, et paneel jääks keskele uuel ekraanil
         self.labels.clear()
         self.buttons.clear()
+        self.sliders.clear()
         self._build_ui()
 
     def _cycle_resolution(self):
@@ -153,6 +186,7 @@ class SettingsScreen(BaseScreen):
         # Ehitab ekraani uuesti üles, et paneel jääks keskele uuel ekraanil
         self.labels.clear()
         self.buttons.clear()
+        self.sliders.clear()
         self._build_ui()
 
     def _reset_settings(self):
@@ -162,6 +196,7 @@ class SettingsScreen(BaseScreen):
         # Ehitab ekraani täielikult uuesti üles uute seadete ja keskmise paneeliga
         self.labels.clear()
         self.buttons.clear()
+        self.sliders.clear()
         self._build_ui()
 
     def _save_settings(self):
@@ -169,10 +204,12 @@ class SettingsScreen(BaseScreen):
         self.settings.save()
 
     def handle_events(self, events):
-        """Töötleb kõiki sisendsündmuseid nuppude jaoks."""
+        """Töötleb kõiki sisendsündmuseid nuppude ja liugurite jaoks."""
         for event in events:
             for btn in self.buttons:
                 btn.handle_event(event)
+            for slider in self.sliders:
+                slider.handle_event(event)
 
     def update(self, dt):
         """Uuendab seadete ekraani olekut. Hetkel pole vaja midagi teha."""
@@ -193,8 +230,10 @@ class SettingsScreen(BaseScreen):
         title_rect = title_surf.get_rect(center=(panel_rect.centerx, panel_rect.y + 32))
         screen.blit(title_surf, title_rect)
 
-        # Joonistab kõik sildid ja nupud
+        # Joonistab kõik sildid, liugurid ja nupud
         for label in self.labels:
             label.draw(screen)
+        for slider in self.sliders:
+            slider.draw(screen)
         for btn in self.buttons:
             btn.draw(screen)
