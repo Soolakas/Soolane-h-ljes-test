@@ -103,4 +103,6 @@ class UISlider:
             value_text = f"{self.value:.2f}" if isinstance(self.value, float) else str(self.value)
             display = f"{self.label}: {value_text}"
             text_surf = self._font.render(display, True, self.text_color)
-            screen.blit(text_surf, (track.x, track.y - self.font_size - 4))
+            # Aseta tekst liuguririba kohale - Position text above the slider track
+            text_rect = text_surf.get_rect(bottomleft=(track.x, track.y - 4))
+            screen.blit(text_surf, text_rect)

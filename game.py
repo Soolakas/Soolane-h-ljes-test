@@ -6,6 +6,7 @@ from enemy import Enemy
 from spawn_manager import SpawnManager
 from difficulty_manager import DifficultyManager
 from vfx_manager import VFXManager
+from sound_manager import SoundManager
 import textures
 from menu.state_manager import StateManager, GameState
 from menu.screens.main_menu import MainMenuScreen
@@ -31,6 +32,13 @@ settings = GameSettings()        # Mängu seadete objekt (salvestab JSON faili)
 state_manager = StateManager()   # Olekuhaldur (menüü, mäng, paus jne)
 
 # ============================================
+# Helihaldur - Sound manager
+# ============================================
+pygame.mixer.init()
+pygame.mixer.set_num_channels(32)        # Luba kuni 32 samaaegset heli - Allow up to 32 simultaneous sounds
+sound_manager = SoundManager(sfx_volume=settings.sfx_volume)
+
+# ============================================
 # Map configuration - Kaardi seaded
 # ============================================
 WORLD_SIZE = 3000    # Maailma suurus pikslites
@@ -51,8 +59,8 @@ for i in range(8):
 # Ekraanid - Screens
 # ============================================
 # Iga menüüekraan on eraldi klass, mis haldab oma nuppe ja joonistamist
-main_menu_screen = MainMenuScreen(state_manager, settings)
-settings_screen = SettingsScreen(state_manager, settings, screen)
+main_menu_screen = MainMenuScreen(state_manager, settings, sound_manager)
+settings_screen = SettingsScreen(state_manager, settings, screen, sound_manager)
 upgrades_screen = UpgradesScreen(state_manager, settings)
 pause_screen = PauseScreen(state_manager, settings)
 game_over_screen = GameOverScreen(state_manager, settings)
@@ -363,6 +371,10 @@ def update_game_logic():
     global speed_power_timer, rapid_fire_timer, projectiles, powerups, score
     global enemies, trail_timer, trail, game_time
 
+    # Uuenda mängija asukohta helihaldurile kauguse arvutamiseks
+    # Update player position for sound distance calculation
+    sound_manager.set_player_position(player_pos)
+
     # Vähendame boonus taimereid
     multi_shot_timer = max(0.0, multi_shot_timer - dt)
     speed_power_timer = max(0.0, speed_power_timer - dt)
@@ -442,6 +454,8 @@ def update_game_logic():
                     projectiles.append(create_projectile(spawn_pos, shot_direction))
             else:
                 projectiles.append(create_projectile(spawn_pos, direction))
+            # Mängi laskmise heli mängija asukohast - Play bullet shoot sound at player position
+            sound_manager.play("bullet", position=pygame.Vector2(player_pos))
             current_shoot_cooldown = shoot_cooldown
             if rapid_fire_timer > 0:
                 current_shoot_cooldown /= rapid_fire_multiplier
@@ -458,6 +472,8 @@ def update_game_logic():
     # Seina kokkupõrke efektid
     for i, projectile in enumerate(projectiles):
         if not point_in_polygon((projectile["pos"].x, projectile["pos"].y), map_vertices):
+            # Mängi seina tabamuse heli kuuli asukohas - Play wall hit sound at projectile position
+            sound_manager.play("wall_hit", position=pygame.Vector2(old_positions[i]))
             vfx_manager.spawn_hit_effect(old_positions[i], "wall",
                                          direction=projectile["vel"].normalize())
 
@@ -498,11 +514,15 @@ def update_game_logic():
             if not game_over and player_invulnerable_timer <= 0:
                 player_health -= 1
                 player_invulnerable_timer = player_invulnerable_duration
+                # Mängi mängija tabamuse heli - Play player hit sound at player position
+                sound_manager.play("player_hit", position=pygame.Vector2(player_pos))
                 if player_health <= 0:
                     player_health = 0
                     game_over = True
                     player_velocity.x = 0
                     player_velocity.y = 0
+                    # Mängi mängija surma heli - Play player death sound at player position
+                    sound_manager.play("player_die", position=pygame.Vector2(player_pos))
 
             push_dir = (enemy_unit.pos - player_pos).normalize()
             enemy_unit.pos = player_pos + push_dir * min_dist
@@ -519,10 +539,14 @@ def update_game_logic():
                 continue
             if enemy_unit.collides_with(projectile["pos"], projectile_radius):
                 bullets_to_remove.add(p_idx)
+                # Mängi vaenlase tabamuse heli vaenlase asukohas - Play enemy hit sound at enemy position
+                sound_manager.play("enemy_hit", position=pygame.Vector2(enemy_unit.pos))
                 if enemy_unit.take_damage(1):
                     enemies_to_remove.add(e_idx)
                     score += enemy_unit.score_value
                     spawn_powerup(enemy_unit.pos)
+                    # Mängi vaenlase surma heli vaenlase asukohas - Play enemy death sound at enemy position
+                    sound_manager.play("enemy_dead", position=pygame.Vector2(enemy_unit.pos))
                     vfx_manager.spawn_hit_effect(
                         pygame.Vector2(enemy_unit.pos), "enemy"
                     )

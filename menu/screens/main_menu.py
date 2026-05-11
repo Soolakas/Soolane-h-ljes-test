@@ -8,8 +8,9 @@ class MainMenuScreen(BaseScreen):
     """Põhimenüü ekraan pealkirja, mängu, seadete, uuenduste ja väljumise nuppudega.
     Main menu screen with title, play, settings, upgrades, and exit buttons."""
 
-    def __init__(self, state_manager, settings):
+    def __init__(self, state_manager, settings, sound_manager=None):
         super().__init__(state_manager, settings)
+        self.sound_manager = sound_manager       # Helihaldur heliefektide jaoks
         self.buttons = []                          # Nuppude nimekiri
         self._title_font = pygame.font.SysFont(None, 80)   # Pealkirja font
         self._subtitle_font = pygame.font.SysFont(None, 28) # Alapealkirja font
@@ -26,7 +27,7 @@ class MainMenuScreen(BaseScreen):
 
         self.buttons = [
             UIButton("PLAY", (btn_x, start_y), (btn_w, btn_h),
-                     callback=lambda: self.state_manager.change_state(GameState.PLAYING),
+                     callback=self._on_play_clicked,
                      font_size=30),
             UIButton("SETTINGS", (btn_x, start_y + btn_h + gap), (btn_w, btn_h),
                      callback=lambda: self.state_manager.change_state(GameState.SETTINGS),
@@ -42,6 +43,13 @@ class MainMenuScreen(BaseScreen):
     def _on_exit_clicked(self):
         """Väljumisnupu klikkimise töötleja."""
         self._quit_requested = True
+
+    def _on_play_clicked(self):
+        """Mängu alustamise nupu klikkimise töötleja.
+        Mängib startimisheli ja vahetab mängu olekule."""
+        if self.sound_manager:
+            self.sound_manager.play("press_start")
+        self.state_manager.change_state(GameState.PLAYING)
 
     def handle_events(self, events):
         """Töötleb kõiki sisendsündmuseid nuppude jaoks."""
