@@ -7,6 +7,8 @@ from spawn_manager import SpawnManager
 from difficulty_manager import DifficultyManager
 from vfx_manager import VFXManager
 from sound_manager import SoundManager
+from upgrade_manager import UpgradeManager, GRACE_PERIOD
+from upgrade_registry import UPGRADES, register_upgrade, Rarity
 import textures
 from menu.state_manager import StateManager, GameState
 from menu.screens.main_menu import MainMenuScreen
@@ -14,6 +16,7 @@ from menu.screens.settings import SettingsScreen
 from menu.screens.upgrades import UpgradesScreen
 from menu.screens.pause import PauseScreen
 from menu.screens.game_over import GameOverScreen
+from menu.screens.upgrade_selection import UpgradeSelectionScreen
 from config.settings_store import GameSettings
 
 # ============================================
@@ -37,6 +40,11 @@ state_manager = StateManager()   # Olekuhaldur (menüü, mäng, paus jne)
 pygame.mixer.init()
 pygame.mixer.set_num_channels(32)        # Luba kuni 32 samaaegset heli - Allow up to 32 simultaneous sounds
 sound_manager = SoundManager(sfx_volume=settings.sfx_volume)
+
+# ============================================
+# Uuenduste haldur - Upgrade manager
+# ============================================
+upgrade_manager = UpgradeManager(grace_period=GRACE_PERIOD)  # Uuenduste valikute haldur
 
 # ============================================
 # Map configuration - Kaardi seaded
@@ -64,6 +72,7 @@ settings_screen = SettingsScreen(state_manager, settings, screen, sound_manager)
 upgrades_screen = UpgradesScreen(state_manager, settings)
 pause_screen = PauseScreen(state_manager, settings)
 game_over_screen = GameOverScreen(state_manager, settings)
+upgrade_selection_screen = UpgradeSelectionScreen(state_manager, settings, upgrade_manager)
 
 # Ekraanide register - kasutatakse peamenüü alam-ekraanide jaoks
 screens = {
@@ -72,6 +81,7 @@ screens = {
     GameState.UPGRADES: upgrades_screen,
     GameState.PAUSED: pause_screen,
     GameState.GAME_OVER: game_over_screen,
+    GameState.UPGRADE_SELECTION: upgrade_selection_screen,
 }
 
 # ============================================
@@ -96,8 +106,6 @@ game_over = False                             # Kas mäng on läbi
 player_velocity = pygame.Vector2(0, 0)        # Mängija kiirus (triivfüüsika)
 player_acceleration = 1200                    # Kiirendus (pikslit/s²)
 player_drag = 4.0                             # Hõõrdetegur (suurem = vähem triivi)
-speed_power_multiplier = 1.7                  # Kiiruse boonus kordaja
-speed_power_timer = 0.0                       # Kiiruse boonus taimer
 
 projectiles = []                               # Kuulid
 projectile_speed = 700                        # Kuuli kiirus
@@ -105,30 +113,16 @@ projectile_radius = 8                         # Kuuli suurus
 
 shoot_cooldown = 0.25                         # Laskmise jahe
 shoot_timer = 0                               # Laskmise taimer
-multi_shot_timer = 0.0                        # Mitmelasu boonus taimer
-multi_shot_projectile_count = 3               # Kuulide arv mitmelasu puhul
-multi_shot_spread = 18                        # Kuulide nurkhajumine
-rapid_fire_timer = 0.0                        # Kiirtule boonus taimer
-rapid_fire_multiplier = 2.0                   # Kiirtule kordaja
 
-powerups = []                                  # Power-up'id (boonused)
-powerup_radius = 13                           # Power-up'i suurus
-powerup_drop_chance = 0.14                    # Power-up'i langemise tõenäosus
-powerup_lifetime = 12.0                       # Power-up'i eluiga (kaob pärast seda aeg)
-powerup_duration = 8.0                        # Power-up'i kestus (mõju aeg)
-POWERUP_TYPES = {
-    "multi_shot": {       # Mitmelasu boonus
-        "color": (255, 210, 60),
-        "label": "M",
-    },
-    "speed": {            # Kiiruse boonus
-        "color": (70, 220, 255),
-        "label": "S",
-    },
-    "rapid_fire": {       # Kiirtule boonus
-        "color": (255, 110, 210),
-        "label": "R",
-    },
+# ============================================
+# Player stats - permanent upgrades - Mängija statistika püsivõimendused
+# ============================================
+# Need väärtused muutuvad ainult uuenduste kaudu - Only modified by upgrades
+player_stats = {
+    "acceleration_multiplier": 1.0,   # Kiirenduse kordaja - Acceleration multiplier
+    "multi_shot_count": 1,            # Kuulide arv ühe lasuga - Projectiles per shot
+    "multi_shot_spread": 18,          # Kuulide nurkhajumine - Projectile spread angle
+    "fire_rate_multiplier": 1.0,      # Tulekiiruse kordaja - Fire rate multiplier
 }
 
 score = 0  # Punktid
@@ -155,9 +149,8 @@ def init_game():
     """Lähtestab kõik mängu muutujad algväärtustele.
     Initialize all game variables to their starting values."""
     global player_pos, player_angle, target_angle, player_health, player_invulnerable_timer
-    global game_over, player_velocity, shoot_timer, multi_shot_timer
-    global speed_power_timer, rapid_fire_timer, projectiles, powerups, score
-    global enemies, trail_timer, trail, game_time
+    global game_over, player_velocity, shoot_timer, projectiles, score
+    global enemies, trail_timer, trail, game_time, player_stats
 
     player_pos = pygame.Vector2(center, center)
     player_angle = 0
@@ -168,12 +161,16 @@ def init_game():
 
     player_velocity = pygame.Vector2(0, 0)
     shoot_timer = 0
-    multi_shot_timer = 0.0
-    speed_power_timer = 0.0
-    rapid_fire_timer = 0.0
+
+    # Lähtesta mängija statistika - Reset player stats to base values
+    player_stats = {
+        "acceleration_multiplier": 1.0,
+        "multi_shot_count": 1,
+        "multi_shot_spread": 18,
+        "fire_rate_multiplier": 1.0,
+    }
 
     projectiles = []
-    powerups = []
     score = 0
     enemies = []
 
@@ -181,10 +178,11 @@ def init_game():
     trail = []
     game_time = 0
 
-    # Lähtestame ka raskuse ja tekitamise
+    # Lähtestame ka raskuse, tekitamise ja uuendused
     difficulty_manager.elapsed_time = 0.0
     spawn_manager.spawn_timer = 0.0
     vfx_manager.particles = []
+    upgrade_manager.reset()
 
 
 def reset_game():
@@ -196,6 +194,17 @@ def reset_game():
 # Seame tagasihelistamised menüüekraanidele
 pause_screen.set_game_reset_callback(reset_game)
 game_over_screen.set_restart_callback(reset_game)
+
+# Seame uuenduse valiku tagasihelistamise - Set upgrade selection callback
+def on_upgrade_selected(index):
+    """Rakenda valitud uuendus ja naase mängu - Apply selected upgrade and resume game."""
+    choices = upgrade_manager.pending_choices
+    if 0 <= index < len(choices):
+        upgrade_manager.apply_upgrade(choices[index], player_stats)
+    upgrade_manager.clear_pending()
+    state_manager.pop_state()  # Naase mängu olekusse - Return to PLAYING state
+
+upgrade_selection_screen.set_callback(on_upgrade_selected)
 
 
 # ============================================
@@ -249,37 +258,12 @@ def clamp_to_map(pos, vertices, radius):
     return pos
 
 
-def spawn_powerup(world_pos):
-    """Loob juhusliku power-up'i antud asukohas (tõenäosusega powerup_drop_chance)."""
-    if random.random() > powerup_drop_chance:
-        return
-
-    powerup_type = random.choice(list(POWERUP_TYPES.keys()))
-    powerups.append({
-        "pos": pygame.Vector2(world_pos),
-        "type": powerup_type,
-        "age": 0.0,
-    })
-
-
 def create_projectile(spawn_pos, direction):
     """Loob uue kuuli antud asukohast ja suunas."""
     return {
         "pos": pygame.Vector2(spawn_pos),
         "vel": direction * projectile_speed
     }
-
-
-def apply_powerup(powerup_type):
-    """Aktiveerib korjatud power-up'i mõju."""
-    global multi_shot_timer, speed_power_timer, rapid_fire_timer
-
-    if powerup_type == "multi_shot":
-        multi_shot_timer = powerup_duration
-    elif powerup_type == "speed":
-        speed_power_timer = powerup_duration
-    elif powerup_type == "rapid_fire":
-        rapid_fire_timer = powerup_duration
 
 
 def render_game_screen():
@@ -294,24 +278,6 @@ def render_game_screen():
     # Vaenlased
     for enemy_unit in enemies:
         enemy_unit.draw(screen, camera_offset)
-
-    # Power-up'id
-    powerup_font = pygame.font.SysFont(None, 22)
-    for powerup in powerups:
-        config = POWERUP_TYPES[powerup["type"]]
-        screen_pos = (
-            int(powerup["pos"].x - camera_offset.x),
-            int(powerup["pos"].y - camera_offset.y),
-        )
-        pulse = 1 + 0.12 * math.sin(pygame.time.get_ticks() * 0.008)
-        radius = int(powerup_radius * pulse)
-        pygame.draw.circle(screen, config["color"], screen_pos, radius, 2)
-        label = powerup_font.render(config["label"], True, config["color"])
-        label_pos = (
-            screen_pos[0] - label.get_width() / 2,
-            screen_pos[1] - label.get_height() / 2,
-        )
-        screen.blit(label, label_pos)
 
     # Mängija jälg - animated pixel fire trail
     textures.draw_player_trail(screen, trail, player_pos, TRAIL_LIFETIME, camera_offset, 9)
@@ -349,36 +315,25 @@ def render_game_screen():
     score_text = font.render(f"Score: {score}", True, (255, 255, 255))
     screen.blit(score_text, (10, 38))
 
-    # Aktiivsed power-up'id
-    active_powerups = []
-    if multi_shot_timer > 0:
-        active_powerups.append(f"Multi: {multi_shot_timer:.1f}s")
-    if speed_power_timer > 0:
-        active_powerups.append(f"Speed: {speed_power_timer:.1f}s")
-    if rapid_fire_timer > 0:
-        active_powerups.append(f"Fire Rate: {rapid_fire_timer:.1f}s")
-
-    for idx, powerup_text in enumerate(active_powerups):
-        rendered = font.render(powerup_text, True, (255, 255, 255))
-        screen.blit(rendered, (10, 66 + idx * 26))
-
 
 def update_game_logic():
     """Uuendab kogu mängu loogikat: sisend, liikumine, laskmine, kokkupõrked, vaenlased.
     Updates all game logic: input, movement, shooting, collisions, enemies."""
     global player_pos, player_angle, target_angle, player_health, player_invulnerable_timer
-    global game_over, player_velocity, shoot_timer, multi_shot_timer
-    global speed_power_timer, rapid_fire_timer, projectiles, powerups, score
+    global game_over, player_velocity, shoot_timer, projectiles, score
     global enemies, trail_timer, trail, game_time
 
     # Uuenda mängija asukohta helihaldurile kauguse arvutamiseks
     # Update player position for sound distance calculation
     sound_manager.set_player_position(player_pos)
 
-    # Vähendame boonus taimereid
-    multi_shot_timer = max(0.0, multi_shot_timer - dt)
-    speed_power_timer = max(0.0, speed_power_timer - dt)
-    rapid_fire_timer = max(0.0, rapid_fire_timer - dt)
+    # Uuenda uuenduste haldurit - Track time without hit for upgrade chances
+    upgrade_manager.update(dt)
+
+    # Saada frame_update konks uuendustele - Dispatch frame update hook for upgrades
+    upgrade_manager.hooks.dispatch_frame_update(dt, player_stats, enemies, player_pos)
+
+    # Vähendame haavamatuse taimerit
     player_invulnerable_timer = max(0.0, player_invulnerable_timer - dt)
 
     # ============================================
@@ -401,9 +356,8 @@ def update_game_logic():
     # ============================================
     if input_dir.length() > 0:
         input_dir = input_dir.normalize()
-        current_acceleration = player_acceleration
-        if speed_power_timer > 0:
-            current_acceleration *= speed_power_multiplier
+        # Kasuta püsivat kiirenduse kordajat - Use permanent acceleration multiplier
+        current_acceleration = player_acceleration * player_stats["acceleration_multiplier"]
         player_velocity += input_dir * current_acceleration * dt
 
     # Hõõrdumine aeglustab kiirust
@@ -446,19 +400,29 @@ def update_game_logic():
             # Lase mängija äärest
             spawn_pos = player_pos + direction * (player_radius + projectile_radius)
 
-            if multi_shot_timer > 0:
-                middle_index = (multi_shot_projectile_count - 1) / 2
-                for shot_index in range(multi_shot_projectile_count):
-                    spread_angle = (shot_index - middle_index) * multi_shot_spread
+            # Kasuta püsivaid uuendusi - Use permanent upgrades for multi-shot
+            shot_count = player_stats["multi_shot_count"]
+            spread = player_stats["multi_shot_spread"]
+
+            if shot_count > 1:
+                middle_index = (shot_count - 1) / 2
+                for shot_index in range(shot_count):
+                    spread_angle = (shot_index - middle_index) * spread
                     shot_direction = direction.rotate(spread_angle)
-                    projectiles.append(create_projectile(spawn_pos, shot_direction))
+                    # Loo kuul ja rakenda konksud - Create bullet and apply spawn hooks
+                    bullet = create_projectile(spawn_pos, shot_direction)
+                    bullet = upgrade_manager.hooks.dispatch_bullet_spawn(bullet, player_stats)
+                    projectiles.append(bullet)
             else:
-                projectiles.append(create_projectile(spawn_pos, direction))
+                # Loo kuul ja rakenda konksud - Create bullet and apply spawn hooks
+                bullet = create_projectile(spawn_pos, direction)
+                bullet = upgrade_manager.hooks.dispatch_bullet_spawn(bullet, player_stats)
+                projectiles.append(bullet)
             # Mängi laskmise heli mängija asukohast - Play bullet shoot sound at player position
             sound_manager.play("bullet", position=pygame.Vector2(player_pos))
             current_shoot_cooldown = shoot_cooldown
-            if rapid_fire_timer > 0:
-                current_shoot_cooldown /= rapid_fire_multiplier
+            # Kasuta püsivat tulekiiruse kordajat - Use permanent fire rate multiplier
+            current_shoot_cooldown /= player_stats["fire_rate_multiplier"]
             shoot_timer = current_shoot_cooldown
 
     # ============================================
@@ -516,6 +480,16 @@ def update_game_logic():
                 player_invulnerable_timer = player_invulnerable_duration
                 # Mängi mängija tabamuse heli - Play player hit sound at player position
                 sound_manager.play("player_hit", position=pygame.Vector2(player_pos))
+
+                # Uuenda uuenduste haldurit - Update upgrade manager on hit
+                upgrade_manager.on_player_hit()
+
+                # Kui grazes periood on möödas, näita uuenduste valikut
+                # If grace period passed, show upgrade selection
+                if upgrade_manager.should_trigger_upgrade():
+                    upgrade_manager.generate_choices()
+                    state_manager.push_state(GameState.UPGRADE_SELECTION)
+
                 if player_health <= 0:
                     player_health = 0
                     game_over = True
@@ -544,7 +518,6 @@ def update_game_logic():
                 if enemy_unit.take_damage(1):
                     enemies_to_remove.add(e_idx)
                     score += enemy_unit.score_value
-                    spawn_powerup(enemy_unit.pos)
                     # Mängi vaenlase surma heli vaenlase asukohas - Play enemy death sound at enemy position
                     sound_manager.play("enemy_dead", position=pygame.Vector2(enemy_unit.pos))
                     vfx_manager.spawn_hit_effect(
@@ -557,24 +530,6 @@ def update_game_logic():
         projectiles = [p for i, p in enumerate(projectiles) if i not in bullets_to_remove]
     if enemies_to_remove:
         enemies = [e for i, e in enumerate(enemies) if i not in enemies_to_remove]
-
-    # ============================================
-    # Power up collection - Power-up'ide korjamine
-    # ============================================
-    collected_powerups = set()
-    for powerup_idx, powerup in enumerate(powerups if not game_over else []):
-        powerup["age"] += dt
-        if powerup["pos"].distance_to(player_pos) < player_radius + powerup_radius:
-            apply_powerup(powerup["type"])
-            collected_powerups.add(powerup_idx)
-        elif powerup["age"] >= powerup_lifetime:
-            collected_powerups.add(powerup_idx)
-
-    if collected_powerups:
-        powerups = [
-            p for i, p in enumerate(powerups)
-            if i not in collected_powerups
-        ]
 
     # ============================================
     # Player trail - Mängija jälg
@@ -646,6 +601,16 @@ while running:
         pause_screen.handle_events(events)
         pause_screen.update(dt)
         pause_screen.draw(screen)
+
+    # ============================================
+    # UPGRADE_SELECTION state - Uuenduse valik
+    # ============================================
+    elif current_state == GameState.UPGRADE_SELECTION:
+        # Joonista mäng taha ja valik ekraan peale
+        render_game_screen()
+        upgrade_selection_screen.handle_events(events)
+        upgrade_selection_screen.update(dt)
+        upgrade_selection_screen.draw(screen)
 
     # ============================================
     # MENU / SETTINGS / UPGRADES / GAME_OVER states - Menüü ekraanid
