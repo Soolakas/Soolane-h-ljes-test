@@ -7,7 +7,8 @@ class GameState(Enum):
     PLAYING = "playing"    # Aktiivne mäng
     PAUSED = "paused"      # Mäng on peatatud
     SETTINGS = "settings"  # Seadete ekraan
-    UPGRADES = "upgrades"  # Uuenduste ekraan
+    UPGRADES = "upgrades"  # Püsivõimenduste ekraan (menüü)
+    UPGRADE_SELECTION = "upgrade_selection"  # Uuenduse valik mängu ajal
     GAME_OVER = "game_over" # Mängu lõpp
 
 
