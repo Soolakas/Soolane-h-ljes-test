@@ -133,7 +133,18 @@ class UpgradeSelectionScreen(BaseScreen):
         self._title_font = pygame.font.SysFont(None, 56)
         self._subtitle_font = pygame.font.SysFont(None, 28)
         self._on_upgrade_selected = None      # Tagasihelistamine - Callback
+        self._time_without_hit = 0.0          # Aeg ilma tabamuseta - Time without hit
+        self._selection_cooldown = 0.5        # Valiku viivitus sekundites - Selection delay in seconds
+        self._cooldown_remaining = 0.0        # Järelejäänud viivitus - Remaining cooldown
         self._build_ui()
+
+    def reset_cooldown(self):
+        """Lähtesta valiku viivitus - Reset selection cooldown (called when choices are generated)."""
+        self._cooldown_remaining = self._selection_cooldown
+
+    def set_time_without_hit(self, time_val):
+        """Seab aja ilma tabamuseta - Set time without hit for display."""
+        self._time_without_hit = time_val
 
     def set_callback(self, callback):
         """Seab tagasihelistamise uuenduse valimisel - Set upgrade selection callback."""
@@ -173,13 +184,17 @@ class UpgradeSelectionScreen(BaseScreen):
 
     def handle_events(self, events):
         """Töötleb sisendsündmuseid - Handle input events."""
+        # Ignore events during cooldown - prevents accidental clicks
+        if self._cooldown_remaining > 0:
+            return
         for event in events:
             for card in self.cards:
                 card.handle_event(event)
 
     def update(self, dt):
         """Uuendab ekraani olekut - Update screen state."""
-        pass
+        if self._cooldown_remaining > 0:
+            self._cooldown_remaining -= dt
 
     def draw(self, screen):
         """Joonistab valiku ekraani - Draw the selection screen."""
@@ -196,10 +211,17 @@ class UpgradeSelectionScreen(BaseScreen):
         screen.blit(title_surf, title_rect)
 
         # Alapealkiri (aeg ilma tabamuseta) - Subtitle (time without hit)
-        time_text = f"Time without hit: {self.upgrade_manager.time_without_hit:.1f}s"
+        time_text = f"Time without hit: {self._time_without_hit:.1f}s"
         subtitle_surf = self._subtitle_font.render(time_text, True, (150, 150, 180))
         subtitle_rect = subtitle_surf.get_rect(center=(screen_w / 2, title_rect.bottom + 15))
         screen.blit(subtitle_surf, subtitle_rect)
+
+        # Kuva viivituse indikaator - Show cooldown indicator
+        if self._cooldown_remaining > 0:
+            wait_text = f"Choosing... {self._cooldown_remaining:.1f}s"
+            wait_surf = self._subtitle_font.render(wait_text, True, (255, 200, 50))
+            wait_rect = wait_surf.get_rect(center=(screen_w / 2, subtitle_rect.bottom + 20))
+            screen.blit(wait_surf, wait_rect)
 
         # Kaardid - Cards
         for card in self.cards:

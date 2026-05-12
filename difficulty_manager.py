@@ -3,30 +3,55 @@ import math
 # ============================================
 # Difficulty configuration - Raskuse seaded
 # ============================================
+# All formulas scale infinitely - no max cap on difficulty
+# Kõik valemid skaleeruvad lõpmatult - raskusel ei ole ülemist piiri
 
-# Time thresholds for difficulty scaling (seconds)
-DIFFICULTY_RAMP_TIME = 300.0       # Full ramp reached at 5 minutes
 DIFFICULTY_INITIAL_DELAY = 10.0   # Grace period before ramp begins
 
-# Spawn difficulty - Tekitamise raskus
+# ============================================
+# Spawn interval scaling - Tekitamise intervalli skaala
+# ============================================
+# Formula: max(MIN, BASE * exp(-RATE * time))
+# Valem: max(MIN, BASE * exp(-RATE * aeg))
 BASE_SPAWN_INTERVAL = 2.0          # Starting seconds between waves
-MIN_SPAWN_INTERVAL = 0.5           # Fastest spawn interval
-SPAWN_RAMP_RATE = 0.7              # How quickly spawn rate increases
+MIN_SPAWN_INTERVAL = 0.3           # Fastest possible spawn interval
+SPAWN_INTERVAL_RATE = 0.015        # How fast interval decreases per second
 
-# Enemy scaling - Vaenlase skaala
-BASE_SPEED_MULTIPLIER = 1.0
-MAX_SPEED_MULTIPLIER = 1.5
-SPEED_RAMP_RATE = 0.5
+# ============================================
+# Wave size scaling - Lainete suuruse skaala
+# ============================================
+# Formula: BASE_MIN + floor(RATE_MIN * time), BASE_MAX + floor(RATE_MAX * time)
+# Valem: BASE_MIN + floor(RATE_MIN * aeg), BASE_MAX + floor(RATE_MAX * aeg)
+BASE_WAVE_SIZE_MIN = 1
+BASE_WAVE_SIZE_MAX = 4
+WAVE_SIZE_MIN_RATE = 0.02          # Minimum wave size increase per second
+WAVE_SIZE_MAX_RATE = 0.05          # Maximum wave size increase per second
+MAX_WAVE_SIZE_HARD_CAP = 15        # Absolute max enemies per wave (respecting MAX_ENEMIES)
 
+# ============================================
+# Enemy health scaling - Vaenlase tervise skaala
+# ============================================
+# Formula: BASE + floor(RATE * time)
+# Valem: BASE + floor(RATE * aeg)
 BASE_HEALTH_BONUS = 0
-MAX_HEALTH_BONUS = 3
-HEALTH_RAMP_RATE = 0.6
+HEALTH_BONUS_RATE = 0.3            # Bonus health per second (was 0.03, now ×10 = ~1 HP per ~3.3s)
 
+# ============================================
+# Enemy speed scaling - Vaenlase kiiruse skaala
+# ============================================
+# Formula: BASE * (1 + RATE * sqrt(time)) - sqrt for diminishing returns
+# Valem: BASE * (1 + RATE * sqrt(aeg)) - sqrt kahaneva tootluse jaoks
+BASE_SPEED_MULTIPLIER = 1.0
+SPEED_RATE = 0.08                  # Speed increase rate
+MAX_SPEED_MULTIPLIER = 2.0         # Absolute cap on speed (was 3x, now 2x)
+
+# ============================================
 # Enemy type weighting - Tüüpide kaal
-# Weights for (basic, fast, tank) at different time phases
-WEIGHTS_EARLY = (0.7, 0.25, 0.05)  # First 30 seconds
-WEIGHTS_MID = (0.4, 0.35, 0.25)    # 30-120 seconds
-WEIGHTS_LATE = (0.2, 0.35, 0.45)   # After 120 seconds
+# ============================================
+# Weights shift infinitely toward harder types
+# Kaalud nihkuvad lõpmatult raskemate tüüpide poole
+BASE_WEIGHTS = (0.7, 0.25, 0.05)   # (basic, fast, tank) at start
+WEIGHT_SHIFT_RATE = 0.005          # How fast weights shift per second
 
 
 class DifficultyManager:
@@ -34,7 +59,8 @@ class DifficultyManager:
 
     Tracks elapsed game time and provides scaling multipliers
     for spawn rate, enemy speed, health, and type distribution.
-    Extensible: add new scaling methods as new difficulty hooks are needed.
+    All scaling formulas increase infinitely over time.
+    Kõik skaleerimise valemid kasvavad lõpmatult aja jooksul.
     """
 
     def __init__(self):
@@ -49,75 +75,87 @@ class DifficultyManager:
         """
         self.elapsed_time += dt
 
-    def _get_ramp_factor(self, ramp_rate):
-        """Calculate smooth ramp factor (0.0 to 1.0) based on elapsed time.
-
-        Uses a smoothstep curve for gradual difficulty increase.
-
-        Args:
-            ramp_rate (float): Multiplier controlling ramp speed.
-
+    def _get_effective_time(self):
+        """Get time since grace period ended - Aeg pärast kaitseperioodi.
+        
         Returns:
-            float: Normalized factor between 0.0 and 1.0.
+            float: Seconds of active difficulty scaling.
         """
-        effective_time = max(0.0, self.elapsed_time - DIFFICULTY_INITIAL_DELAY)
-        raw = effective_time * ramp_rate / DIFFICULTY_RAMP_TIME
-        # Smoothstep for gradual ramp
-        t = max(0.0, min(1.0, raw))
-        return t * t * (3 - 2 * t)
+        return max(0.0, self.elapsed_time - DIFFICULTY_INITIAL_DELAY)
 
     def get_spawn_interval(self):
         """Get current spawn interval in seconds - Tekitamise intervall.
+        
+        Uses exponential decay: interval = BASE * exp(-RATE * time)
+        Valem: BASE * exp(-RATE * aeg) - eksponentsiaalne kahanemine.
 
         Returns:
             float: Seconds between spawn waves, decreasing over time.
         """
-        factor = self._get_ramp_factor(SPAWN_RAMP_RATE)
-        interval = BASE_SPAWN_INTERVAL - factor * (BASE_SPAWN_INTERVAL - MIN_SPAWN_INTERVAL)
+        t = self._get_effective_time()
+        interval = BASE_SPAWN_INTERVAL * math.exp(-SPAWN_INTERVAL_RATE * t)
         return max(MIN_SPAWN_INTERVAL, interval)
+
+    def get_wave_size(self):
+        """Get current wave size - Lainete suurus.
+        
+        Returns:
+            tuple: (min_wave_size, max_wave_size) for random selection.
+        """
+        t = self._get_effective_time()
+        wave_min = BASE_WAVE_SIZE_MIN + int(WAVE_SIZE_MIN_RATE * t)
+        wave_max = BASE_WAVE_SIZE_MAX + int(WAVE_SIZE_MAX_RATE * t)
+        # Cap at hard limit and ensure min <= max
+        wave_max = min(wave_max, MAX_WAVE_SIZE_HARD_CAP)
+        wave_min = min(wave_min, wave_max)
+        return (wave_min, wave_max)
 
     def get_enemy_speed_multiplier(self):
         """Get enemy speed multiplier - Kiiruse kordaja.
+        
+        Uses sqrt scaling: BASE * (1 + RATE * sqrt(time))
+        Valem: BASE * (1 + RATE * sqrt(aeg)) - sqrt kahaneva tootluse jaoks.
 
         Returns:
-            float: Multiplier applied to enemy base speed (1.0 to 1.5).
+            float: Multiplier applied to enemy base speed.
         """
-        factor = self._get_ramp_factor(SPEED_RAMP_RATE)
-        return BASE_SPEED_MULTIPLIER + factor * (MAX_SPEED_MULTIPLIER - BASE_SPEED_MULTIPLIER)
+        t = self._get_effective_time()
+        multiplier = BASE_SPEED_MULTIPLIER * (1 + SPEED_RATE * math.sqrt(t))
+        return min(MAX_SPEED_MULTIPLIER, multiplier)
 
     def get_enemy_health_bonus(self):
         """Get bonus health added to enemies - Tervise boonus.
+        
+        Uses linear scaling: BASE + RATE * time
+        Valem: BASE + RATE * aeg - lineaarne kasv.
 
         Returns:
             int: Extra health points added to enemy base health.
         """
-        factor = self._get_ramp_factor(HEALTH_RAMP_RATE)
-        return int(BASE_HEALTH_BONUS + factor * (MAX_HEALTH_BONUS - BASE_HEALTH_BONUS))
+        t = self._get_effective_time()
+        return int(BASE_HEALTH_BONUS + HEALTH_BONUS_RATE * t)
 
     def get_type_weights(self):
         """Get enemy type selection weights - Tüüpide kaalud.
+        
+        Weights shift infinitely toward harder types over time.
+        Kaalud nihkuvad lõpmatult raskemate tüüpide poole.
 
         Returns:
             tuple: (basic_weight, fast_weight, tank_weight) for random selection.
         """
-        t = self.elapsed_time
-
-        if t < 30:
-            return WEIGHTS_EARLY
-        elif t < 120:
-            # Interpolate between early and mid
-            blend = (t - 30) / 90.0
-            return tuple(
-                w_early + blend * (w_mid - w_early)
-                for w_early, w_mid in zip(WEIGHTS_EARLY, WEIGHTS_MID)
-            )
-        else:
-            # Interpolate between mid and late
-            blend = min(1.0, (t - 120) / 180.0)
-            return tuple(
-                w_mid + blend * (w_late - w_mid)
-                for w_mid, w_late in zip(WEIGHTS_MID, WEIGHTS_LATE)
-            )
+        t = self._get_effective_time()
+        shift = WEIGHT_SHIFT_RATE * t
+        
+        # Shift weight from basic to tank, fast stays relatively stable
+        basic = max(0.05, BASE_WEIGHTS[0] - shift * 1.5)
+        tank = min(0.70, BASE_WEIGHTS[2] + shift)
+        fast = 1.0 - basic - tank  # Fast gets the remainder
+        fast = max(0.10, fast)     # Ensure fast has at least 10%
+        
+        # Normalize to sum to 1.0
+        total = basic + fast + tank
+        return (basic / total, fast / total, tank / total)
 
     def get_elapsed_time(self):
         """Get formatted elapsed time string - Aja string.

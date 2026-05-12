@@ -12,6 +12,7 @@ WAVE_SIZE_MIN = 1           # Minimum enemies per wave
 WAVE_SIZE_MAX = 4           # Maximum enemies per wave
 SPAWN_JITTER = 80           # Random offset along map edge (pixels)
 SPREAD_RADIUS = 30          # How far wave members scatter from spawn point
+MIN_SPAWN_DISTANCE_FROM_PLAYER = 250  # Min distance from player (same as Heavy Metal radius)
 
 # Future hooks (unused now, available for later expansion) - Tuleviku konksud:
 # directional_bias = False    # Spawn away from player movement direction
@@ -58,16 +59,18 @@ class SpawnManager:
         # Use difficulty manager for spawn interval if available - Raskuse skaala
         if self.difficulty_manager is not None:
             self.spawn_timer = self.difficulty_manager.get_spawn_interval()
+            wave_min, wave_max = self.difficulty_manager.get_wave_size()
         else:
             self.spawn_timer = SPAWN_INTERVAL
+            wave_min, wave_max = WAVE_SIZE_MIN, WAVE_SIZE_MAX
 
-        wave_size = random.randint(WAVE_SIZE_MIN, WAVE_SIZE_MAX)
+        wave_size = random.randint(wave_min, wave_max)
 
         for _ in range(wave_size):
             if len(current_enemies) + len(new_enemies) >= MAX_ENEMIES:
                 break
 
-            spawn_pos = self._get_random_spawn_point()
+            spawn_pos = self._get_random_spawn_point(player_pos)
             type_name = self._select_enemy_type()
             new_enemy = enemy.create_enemy(type_name, spawn_pos)
             new_enemies.append(new_enemy)
@@ -95,46 +98,68 @@ class SpawnManager:
         else:
             return random.choice(available_types)
 
-    def _get_random_spawn_point(self):
+    def _get_random_spawn_point(self, player_pos=None):
         """
         Generate a random spawn position along the map border.
 
         Uses an angular method: pick random angle from center, find edge
         intersection, add jitter, offset outside the map.
+        Ensures spawn point is at least MIN_SPAWN_DISTANCE_FROM_PLAYER from player.
+
+        Args:
+            player_pos (pygame.Vector2, optional): Player position for distance check.
 
         Returns:
             pygame.Vector2: World position just outside the map boundary.
         """
-        angle = random.uniform(0, 360)
-        ray_dir = pygame.Vector2(math.cos(math.radians(angle)), math.sin(math.radians(angle)))
+        if player_pos is None:
+            player_pos = self.world_center
 
-        # Find intersection with map border
-        best_dist = float('inf')
-        best_point = None
+        max_attempts = 10
+        for _ in range(max_attempts):
+            angle = random.uniform(0, 360)
+            ray_dir = pygame.Vector2(math.cos(math.radians(angle)), math.sin(math.radians(angle)))
 
-        for i in range(len(self.map_vertices)):
-            v1 = pygame.Vector2(self.map_vertices[i])
-            v2 = pygame.Vector2(self.map_vertices[(i + 1) % len(self.map_vertices)])
+            # Find intersection with map border
+            best_dist = float('inf')
+            best_point = None
 
-            intersect = self._ray_segment_intersect(self.world_center, ray_dir, v1, v2)
-            if intersect is not None:
-                dist = self.world_center.distance_to(intersect)
-                if dist < best_dist:
-                    best_dist = dist
-                    best_point = intersect
+            for i in range(len(self.map_vertices)):
+                v1 = pygame.Vector2(self.map_vertices[i])
+                v2 = pygame.Vector2(self.map_vertices[(i + 1) % len(self.map_vertices)])
 
-        if best_point is None:
-            best_point = pygame.Vector2(self.world_center) + ray_dir * 500
+                intersect = self._ray_segment_intersect(self.world_center, ray_dir, v1, v2)
+                if intersect is not None:
+                    dist = self.world_center.distance_to(intersect)
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_point = intersect
 
-        # Add jitter along the edge segment
-        jitter_amount = random.uniform(-SPAWN_JITTER, SPAWN_JITTER)
-        edge_dir = self._get_edge_direction(best_point)
-        jittered_point = best_point + edge_dir * jitter_amount
+            if best_point is None:
+                best_point = pygame.Vector2(self.world_center) + ray_dir * 500
 
-        # Offset inside the map by a small amount - Kaardi sees
-        inward_dir = (self.world_center - jittered_point).normalize()
-        spawn_point = jittered_point + inward_dir * 40
+            # Add jitter along the edge segment
+            jitter_amount = random.uniform(-SPAWN_JITTER, SPAWN_JITTER)
+            edge_dir = self._get_edge_direction(best_point)
+            jittered_point = best_point + edge_dir * jitter_amount
 
+            # Offset inside the map by a small amount - Kaardi sees
+            inward_dir = (self.world_center - jittered_point).normalize()
+            spawn_point = jittered_point + inward_dir * 40
+
+            # Check distance from player - ensure minimum distance
+            dist_from_player = spawn_point.distance_to(player_pos)
+            if dist_from_player >= MIN_SPAWN_DISTANCE_FROM_PLAYER:
+                return pygame.Vector2(spawn_point)
+
+            # If too close, try spawning from opposite side of map
+            # Push spawn point away from player along the edge
+            opposite_dir = (spawn_point - self.world_center).normalize()
+            spawn_point = self.world_center + opposite_dir * (best_dist * 0.9)
+            if spawn_point.distance_to(player_pos) >= MIN_SPAWN_DISTANCE_FROM_PLAYER:
+                return pygame.Vector2(spawn_point)
+
+        # If all attempts fail, return the last spawn point (fallback)
         return pygame.Vector2(spawn_point)
 
     def _ray_segment_intersect(self, origin, direction, seg_a, seg_b):
