@@ -17,6 +17,7 @@ from menu.screens.upgrades import UpgradesScreen
 from menu.screens.pause import PauseScreen
 from menu.screens.game_over import GameOverScreen
 from menu.screens.upgrade_selection import UpgradeSelectionScreen
+from menu.screens.dev_panel import DevPanel
 from config.settings_store import GameSettings
 
 # ============================================
@@ -97,7 +98,7 @@ player_radius = 15                            # Mängija suurus
 player_angle = 0                              # Mängija pöördenurk
 target_angle = 0                              # Sihtpöördenurk
 rotation_speed = 8                            # Pöörlemise kiirus
-player_max_health = 7                         # Maksimaalne tervis
+player_max_health = 5                         # Maksimaalne tervis - 5 hits to die
 player_health = player_max_health             # Praegune tervis
 player_invulnerable_timer = 0.0               # Haavamatususe taimer
 player_invulnerable_duration = 1.0            # Haavamatususe kestus
@@ -123,7 +124,56 @@ player_stats = {
     "multi_shot_count": 1,            # Kuulide arv ühe lasuga - Projectiles per shot
     "multi_shot_spread": 18,          # Kuulide nurkhajumine - Projectile spread angle
     "fire_rate_multiplier": 1.0,      # Tulekiiruse kordaja - Fire rate multiplier
+    # New upgrade stats
+    "speed_multiplier": 1.0,          # Thruster Tuning (+0.08 per stack)
+    "crit_chance": 0.0,               # Sharp bullets (+0.10 per stack, caps at 1.0)
+    "crit_multiplier": 3.0,           # Sharp bullets (triple damage)
+    "accuracy": 0,                    # GPS tracker (0-3, tightens spread)
+    "knockback_force": 0.0,           # A bat (exponential decrease formula)
+    "poison_chance": 0.0,            # Green Juice (exponential decrease)
+    "poison_damage": 0.0,             # Green Juice (flat HP/s, exponential decrease)
+    "max_bounces": 0,                 # Waller (bounces off walls)
+    "bounce_speed_multiplier": 1.0,   # Waller (velocity increase on bounce)
+    "random_bullet_chance": 0.0,       # One bullet per sometimes (exponential decrease)
+    "dash_count": 0,                  # The shift key (1 or 2 dashes)
+    "proximity_damage_bonus": 0.0,     # Heavy metal (+0.20 per stack, infinite)
+    "cactus_armor_stacks": 0,         # Cactus armor (1 or 2, 3+ useless)
 }
+
+score = 0  # Punktid
+
+enemies = []  # Vaenlased
+
+# ============================================
+# Enemy debuffs - Vaenlaste staatuseefektid
+# ============================================
+# Jälgib mürgitatud vaenlasi ja teisi efekte - Tracks poisoned enemies and other effects
+enemy_debuffs = {}  # {id(enemy): {"poison_timer": float, "poison_damage": float, "poison_source_pos": Vector2, ...}}
+
+# ============================================
+# Dash system - Dash süsteem
+# ============================================
+dash_state = {
+    "active": False,                  # Kas dash on aktiivne - Is dash currently active
+    "timer": 0.0,                     # Dash'i kestus - Dash duration
+    "duration": 0.075,                # Dash'i pikkus sekundites - Dash length in seconds
+    "direction": pygame.Vector2(0, 0),# Dash'i suund - Dash direction
+    "speed": 3000,                    # Dash'i kiirus - Dash speed
+    "cooldowns": [],                  # Iga dash'i cooldown - Cooldown for each dash
+    "cooldown_duration": 15.0,        # Dash'i cooldown sekundites - Dash cooldown in seconds
+}
+
+# ============================================
+# Cactus armor aura tracking - Cactus armor'i aura jälgimine
+# ============================================
+cactus_armor_aura_timer = {}  # {id(enemy): float} - Aeg, kui kaua vaenlane on aurast sees - Time enemy has been in aura
+CACTUS_AURA_RADIUS = 60         # Aura raadius pikslites - Aura radius in pixels
+HEAVY_METAL_RADIUS = 250        # Heavy metal'i kahju aura raadius - Heavy metal damage aura radius
+
+# ============================================
+# Knockback counter - Tagasilöögi loendur
+# ============================================
+knockback_shot_counter = 0  # Loeb lasku, et iga 5. lasu tekitaks tagasilöögi - Counts shots for knockback every 5th
 
 score = 0  # Punktid
 
@@ -151,6 +201,7 @@ def init_game():
     global player_pos, player_angle, target_angle, player_health, player_invulnerable_timer
     global game_over, player_velocity, shoot_timer, projectiles, score
     global enemies, trail_timer, trail, game_time, player_stats
+    global enemy_debuffs, dash_state, cactus_armor_aura_timer, knockback_shot_counter
 
     player_pos = pygame.Vector2(center, center)
     player_angle = 0
@@ -168,7 +219,35 @@ def init_game():
         "multi_shot_count": 1,
         "multi_shot_spread": 18,
         "fire_rate_multiplier": 1.0,
+        "speed_multiplier": 1.0,
+        "crit_chance": 0.0,
+        "crit_multiplier": 3.0,
+        "accuracy": 0,
+        "knockback_force": 0.0,
+        "poison_chance": 0.0,
+        "poison_damage": 0.0,
+        "max_bounces": 0,
+        "bounce_speed_multiplier": 1.0,
+        "random_bullet_chance": 0.0,
+        "dash_count": 0,
+        "proximity_damage_bonus": 0.0,
+        "cactus_armor_stacks": 0,
     }
+
+    # Lähtesta vaenlaste debuff'id - Reset enemy debuffs
+    enemy_debuffs = {}
+
+    # Lähtesta dash süsteem - Reset dash system
+    dash_state["active"] = False
+    dash_state["timer"] = 0.0
+    dash_state["direction"] = pygame.Vector2(0, 0)
+    dash_state["cooldowns"] = []
+
+    # Lähtesta cactus armor'i aura - Reset cactus armor aura tracking
+    cactus_armor_aura_timer = {}
+
+    # Lähtesta knockback loendur - Reset knockback counter
+    knockback_shot_counter = 0
 
     projectiles = []
     score = 0
@@ -205,6 +284,44 @@ def on_upgrade_selected(index):
     state_manager.pop_state()  # Naase mängu olekusse - Return to PLAYING state
 
 upgrade_selection_screen.set_callback(on_upgrade_selected)
+
+# ============================================
+# Developer mode - Arendaja režiim
+# ============================================
+dev_panel = DevPanel(sound_manager)
+dev_invulnerable = False  # Arendaja haavamatus - Dev invincibility flag
+
+def apply_dev_upgrade(upgrade):
+    """Rakenda arendaja uuendus - Apply dev upgrade instantly."""
+    upgrade_manager.apply_upgrade(upgrade, player_stats)
+
+def skip_time(seconds):
+    """Jäta aeg vahele - Skip time forward."""
+    global game_time
+    game_time += seconds
+    difficulty_manager.elapsed_time += seconds
+    upgrade_manager.time_without_hit += seconds
+
+def kill_all_enemies():
+    """Tapa kõik vaenlased - Kill all enemies instantly."""
+    global enemies, score
+    for enemy_unit in enemies:
+        score += enemy_unit.score_value
+        vfx_manager.spawn_hit_effect(pygame.Vector2(enemy_unit.pos), "enemy")
+        sound_manager.play("enemy_dead", position=pygame.Vector2(enemy_unit.pos))
+    enemies.clear()
+    enemy_debuffs.clear()
+
+def set_dev_invincible(inv):
+    """Seab arendaja haavatamatuse - Set dev invincibility."""
+    global dev_invulnerable
+    dev_invulnerable = inv
+
+dev_panel.set_callback('toggle_invincible', set_dev_invincible)
+dev_panel.set_callback('grant_upgrade', lambda u: apply_dev_upgrade(u))
+dev_panel.set_callback('skip_time', lambda s: skip_time(s))
+dev_panel.set_callback('kill_all', lambda: kill_all_enemies())
+dev_panel.set_callback('reset', lambda: reset_game())
 
 
 # ============================================
@@ -258,12 +375,85 @@ def clamp_to_map(pos, vertices, radius):
     return pos
 
 
-def create_projectile(spawn_pos, direction):
-    """Loob uue kuuli antud asukohast ja suunas."""
-    return {
+def _get_wall_normal(pos, vertices):
+    """Leiab seina normaali antud asukohas - Finds wall normal at given position.
+    
+    Used for Waller bounce physics - calculating reflection angle.
+    
+    Args:
+        pos (pygame.Vector2): Position outside the polygon.
+        vertices (list): Map polygon vertices.
+        
+    Returns:
+        pygame.Vector2 or None: Normalized wall normal vector pointing inward.
+    """
+    min_dist = float('inf')
+    best_normal = None
+
+    for i in range(len(vertices)):
+        x1, y1 = vertices[i]
+        x2, y2 = vertices[(i + 1) % len(vertices)]
+        
+        # Leiab lähima punkti serval - Find closest point on edge
+        dx = x2 - x1
+        dy = y2 - y1
+        if dx == 0 and dy == 0:
+            continue
+        
+        t = max(0, min(1, ((pos.x - x1) * dx + (pos.y - y1) * dy) / (dx * dx + dy * dy)))
+        closest_x = x1 + t * dx
+        closest_y = y1 + t * dy
+        
+        dist = math.hypot(pos.x - closest_x, pos.y - closest_y)
+        if dist < min_dist:
+            min_dist = dist
+            # Normaal on suund servast punkti poole - Normal is direction from edge to point
+            if dist > 0:
+                best_normal = pygame.Vector2(pos.x - closest_x, pos.y - closest_y).normalize()
+            else:
+                # Kui täpselt serval, kasuta ristsuunda - If exactly on edge, use perpendicular
+                edge_dir = pygame.Vector2(dx, dy).normalize()
+                best_normal = pygame.Vector2(-edge_dir.y, edge_dir.x)
+    
+    return best_normal
+
+
+def create_projectile(spawn_pos, direction, bullet_props=None):
+    """Loob uue kuuli antud asukohast ja suunas koos omadustega.
+    Creates a new projectile at given position and direction with properties.
+    
+    Args:
+        spawn_pos (pygame.Vector2): Spawn position.
+        direction (pygame.Vector2): Direction vector.
+        bullet_props (dict, optional): Bullet properties from parent bullet or defaults.
+        
+    Returns:
+        dict: Projectile dictionary with all properties.
+    """
+    # Vaikimisi omadused - Default properties
+    props = {
         "pos": pygame.Vector2(spawn_pos),
-        "vel": direction * projectile_speed
+        "vel": direction * projectile_speed,
+        "is_crit": False,           # Sharp bullets - kas kriitiline löök
+        "has_knockback": False,     # A bat - kas on tagasilöögi kuul
+        "knockback_force": 0.0,     # A bat - tagasilöögi jõud
+        "has_poison": False,        # Green Juice - kas mürgitab
+        "poison_damage": 0.0,       # Green Juice - mürgi kahju
+        "poison_duration": 4.0,     # Green Juice - mürgi kestus
+        "bounce_count": 0,          # Waller - hüpete arv
+        "max_bounces": 0,           # Waller - maksimaalsed hüpped
+        "damage_multiplier": 1.0,   # Heavy metal - kahju kordaja
+        "bullet_radius": projectile_radius,  # Suurus (muutub knockback'i puhul)
     }
+    
+    # Kui omadused on antud, kopeeri need (suvalise kuuli jaoks)
+    # If properties provided, copy them (for random bullet inheritance)
+    if bullet_props:
+        for key, value in bullet_props.items():
+            if key not in ("pos", "vel"):  # Ära kopeeri asukohta ja kiirust
+                props[key] = value
+    
+    return props
 
 
 def render_game_screen():
@@ -292,12 +482,76 @@ def render_game_screen():
         player_invulnerable_timer > 0,
     )
 
-    # Kuulid - glow line projectiles
+    # Kuulid - glow line projectiles with upgrade visuals
     for projectile in projectiles:
-        textures.draw_projectile(screen, projectile, camera_offset)
+        # Sharp bullets - kriitiline kuul on kollane/oranž - Critical bullets are yellow/orange
+        if projectile.get("is_crit", False):
+            # Ajutine salvesta algne värv ja joonista eri värvi
+            # Temporarily save original color and draw different color
+            orig_color = textures.PROJECTILE_COLOR
+            textures.PROJECTILE_COLOR = (255, 160, 30)  # Orange for crit
+            textures.draw_projectile(screen, projectile, camera_offset)
+            textures.PROJECTILE_COLOR = orig_color
+        # A bat - tagasilöögi kuul on suurem - Knockback bullet is bigger
+        elif projectile.get("has_knockback", False):
+            # Joonista suurem kuul - Draw bigger bullet
+            bullet_radius = projectile.get("bullet_radius", projectile_radius)
+            screen_pos = (
+                int(projectile["pos"].x - camera_offset.x),
+                int(projectile["pos"].y - camera_offset.y),
+            )
+            pygame.draw.circle(screen, textures.PROJECTILE_COLOR, screen_pos, int(bullet_radius), 2)
+        else:
+            textures.draw_projectile(screen, projectile, camera_offset)
+
+        # Green Juice - mürgitatud kuulidel rohelised osakesed - Poisoned bullets have green particles
+        if projectile.get("has_poison", False):
+            screen_pos = (
+                int(projectile["pos"].x - camera_offset.x),
+                int(projectile["pos"].y - camera_offset.y),
+            )
+            # Väike roheline täpp - Small green dot
+            pygame.draw.circle(screen, (80, 255, 80), screen_pos, 3)
 
     # Visuaalsed efektid
     vfx_manager.draw(screen, camera_offset)
+
+    # ============================================
+    # Upgrade auras - Uuenduste aurad
+    # ============================================
+    # Cactus armor - faint green circle around player
+    if player_stats.get("cactus_armor_stacks", 0) > 0:
+        aura_pos = (int(player_pos.x - camera_offset.x), int(player_pos.y - camera_offset.y))
+        pygame.draw.circle(screen, (50, 200, 50, 30), aura_pos, CACTUS_AURA_RADIUS, 1)
+        # Faint fill
+        aura_surf = pygame.Surface((CACTUS_AURA_RADIUS * 2, CACTUS_AURA_RADIUS * 2), pygame.SRCALPHA)
+        pygame.draw.circle(aura_surf, (50, 200, 50, 15), (CACTUS_AURA_RADIUS, CACTUS_AURA_RADIUS), CACTUS_AURA_RADIUS)
+        screen.blit(aura_surf, (aura_pos[0] - CACTUS_AURA_RADIUS, aura_pos[1] - CACTUS_AURA_RADIUS))
+
+    # Heavy metal - faint red/dark circle around player
+    if player_stats.get("proximity_damage_bonus", 0.0) > 0:
+        aura_pos = (int(player_pos.x - camera_offset.x), int(player_pos.y - camera_offset.y))
+        pygame.draw.circle(screen, (200, 50, 50, 30), aura_pos, HEAVY_METAL_RADIUS, 1)
+        # Faint fill
+        aura_surf = pygame.Surface((HEAVY_METAL_RADIUS * 2, HEAVY_METAL_RADIUS * 2), pygame.SRCALPHA)
+        pygame.draw.circle(aura_surf, (200, 50, 50, 10), (HEAVY_METAL_RADIUS, HEAVY_METAL_RADIUS), HEAVY_METAL_RADIUS)
+        screen.blit(aura_surf, (aura_pos[0] - HEAVY_METAL_RADIUS, aura_pos[1] - HEAVY_METAL_RADIUS))
+
+    # Green Juice - mürgitatud vaenlaste rohelised osakesed - Poisoned enemy green particles
+    for enemy_unit in enemies:
+        enemy_id = id(enemy_unit)
+        if enemy_id in enemy_debuffs:
+            # Mürgi osakesed - Poison particles
+            for _ in range(2):
+                particle_offset = pygame.Vector2(
+                    random.uniform(-enemy_unit.radius, enemy_unit.radius),
+                    random.uniform(-enemy_unit.radius, enemy_unit.radius),
+                )
+                particle_pos = (
+                    int(enemy_unit.pos.x - camera_offset.x + particle_offset.x),
+                    int(enemy_unit.pos.y - camera_offset.y + particle_offset.y),
+                )
+                pygame.draw.circle(screen, (80, 255, 80, 150), particle_pos, random.randint(1, 3))
 
     # Tervise ruudud
     health_size = 24
@@ -333,6 +587,140 @@ def update_game_logic():
     # Saada frame_update konks uuendustele - Dispatch frame update hook for upgrades
     upgrade_manager.hooks.dispatch_frame_update(dt, player_stats, enemies, player_pos)
 
+    # ============================================
+    # Enemy debuffs update - Vaenlaste staatuseefektide uuendus
+    # ============================================
+    # Initialize removal sets early for cactus armor and poison
+    enemies_to_remove = set()  # Indices for collision detection
+    enemies_to_remove_cactus = set()  # IDs for cactus armor kills
+    enemies_to_remove_poison = set()  # IDs for poison kills
+    
+    # Green Juice - mürgi uuendamine - Update poison debuffs
+    for enemy_unit in enemies:
+        enemy_id = id(enemy_unit)
+        if enemy_id in enemy_debuffs:
+            debuff = enemy_debuffs[enemy_id]
+            debuff["poison_timer"] -= dt
+            if debuff["poison_timer"] > 0:
+                # Mürgi kahju sekundis - Poison damage per second
+                # Rakenda kahju järk-järgult - Apply damage gradually over the second
+                damage_this_frame = debuff["poison_damage"] * dt
+                if enemy_unit.take_damage(damage_this_frame):
+                    enemies_to_remove_poison.add(enemy_id)
+                    score += enemy_unit.score_value
+                    vfx_manager.spawn_hit_effect(
+                        pygame.Vector2(enemy_unit.pos), "enemy"
+                    )
+                    sound_manager.play("enemy_dead", position=pygame.Vector2(enemy_unit.pos))
+            else:
+                # Mürk on läbi - Poison expired
+                del enemy_debuffs[enemy_id]
+
+    # Eemalda mürgiga surnud vaenlased - Remove poison-killed enemies
+    for enemy_id in enemies_to_remove_poison:
+        if enemy_id in enemy_debuffs:
+            del enemy_debuffs[enemy_id]
+        enemies = [e for e in enemies if id(e) != enemy_id]
+
+    # ============================================
+    # Cactus armor aura - Cactus armor'i aura
+    # ============================================
+    cactus_stacks = player_stats.get("cactus_armor_stacks", 0)
+    if cactus_stacks > 0:
+        for enemy_unit in enemies:
+            enemy_id = id(enemy_unit)
+            dist = enemy_unit.pos.distance_to(player_pos)
+            if dist < CACTUS_AURA_RADIUS + enemy_unit.radius:
+                # Vaenlane on aurast sees - Enemy is in aura
+                if enemy_id not in cactus_armor_aura_timer:
+                    cactus_armor_aura_timer[enemy_id] = 0.0
+                cactus_armor_aura_timer[enemy_id] += dt
+
+                # Kui vaenlane on olnud aurast 0.5s, tapa see - If enemy in aura for 0.5s, kill it
+                if cactus_armor_aura_timer[enemy_id] >= 0.5:
+                    # Tavalised vaenlased surevad - Common enemies die (×10 scale)
+                    if enemy_unit.health <= 20 or enemy_unit.max_health <= 20:
+                        score += enemy_unit.score_value
+                        vfx_manager.spawn_hit_effect(
+                            pygame.Vector2(enemy_unit.pos), "enemy"
+                        )
+                        sound_manager.play("enemy_dead", position=pygame.Vector2(enemy_unit.pos))
+                        enemies_to_remove_cactus.add(enemy_id)
+
+                        # Stack 2: pildu kuulid - Spawn bullets in all directions
+                        if cactus_stacks >= 2:
+                            for angle_idx in range(6):
+                                angle = angle_idx * 60
+                                dir_vec = pygame.Vector2(1, 0).rotate(angle)
+                                cactus_bullet = create_projectile(
+                                    pygame.Vector2(enemy_unit.pos), dir_vec
+                                )
+                                # Põhilised kuulid ilma efektideta - Basic bullets without effects
+                                projectiles.append(cactus_bullet)
+
+                        if enemy_id in cactus_armor_aura_timer:
+                            del cactus_armor_aura_timer[enemy_id]
+                    else:
+                        # Tugevamad vaenlased saavad kahju - Stronger enemies take damage (×10 scale)
+                        enemy_unit.take_damage(20)
+                        if not enemy_unit.is_alive():
+                            score += enemy_unit.score_value
+                            vfx_manager.spawn_hit_effect(
+                                pygame.Vector2(enemy_unit.pos), "enemy"
+                            )
+                            sound_manager.play("enemy_dead", position=pygame.Vector2(enemy_unit.pos))
+                            enemies_to_remove_cactus.add(enemy_id)
+                            if enemy_id in cactus_armor_aura_timer:
+                                del cactus_armor_aura_timer[enemy_id]
+            else:
+                # Vaenlane on aurast väljas - Enemy left aura
+                if enemy_id in cactus_armor_aura_timer:
+                    del cactus_armor_aura_timer[enemy_id]
+
+    # ============================================
+    # Dash system - Dash süsteem
+    # ============================================
+    dash_count = player_stats.get("dash_count", 0)
+    if dash_count > 0:
+        # Uuenda cooldown'e - Update cooldowns
+        while len(dash_state["cooldowns"]) < dash_count:
+            dash_state["cooldowns"].append(0.0)
+
+        for i in range(len(dash_state["cooldowns"])):
+            if dash_state["cooldowns"][i] > 0:
+                dash_state["cooldowns"][i] -= dt
+
+        # Dash on aktiivne - Dash is active
+        if dash_state["active"]:
+            dash_state["timer"] -= dt
+            # Rakenda dash'i kiirus - Apply dash velocity
+            player_velocity = dash_state["direction"] * dash_state["speed"]
+            player_pos += player_velocity * dt
+            player_pos = clamp_to_map(player_pos, map_vertices, player_radius)
+
+            if dash_state["timer"] <= 0:
+                dash_state["active"] = False
+                player_velocity *= 0.3  # Aeglusta pärast dash'i - Slow down after dash
+        else:
+            # Kontrolli shift sisendit - Check shift input
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]:
+                # Leia dash'i suund kursori poole - Find dash direction toward cursor
+                world_mouse = pygame.Vector2(pygame.mouse.get_pos()) + camera_offset
+                dash_dir = world_mouse - player_pos
+                if dash_dir.length() > 0:
+                    dash_dir = dash_dir.normalize()
+
+                    # Leia esimene cooldown'ita dash - Find first dash off cooldown
+                    for i in range(dash_count):
+                        if dash_state["cooldowns"][i] <= 0:
+                            dash_state["active"] = True
+                            dash_state["timer"] = dash_state["duration"]
+                            dash_state["direction"] = dash_dir
+                            dash_state["cooldowns"][i] = dash_state["cooldown_duration"]
+                            player_invulnerable_timer = max(player_invulnerable_timer, dash_state["duration"])
+                            break
+
     # Vähendame haavamatuse taimerit
     player_invulnerable_timer = max(0.0, player_invulnerable_timer - dt)
 
@@ -354,11 +742,14 @@ def update_game_logic():
     # ============================================
     # Drift movement - Triivliikumine
     # ============================================
-    if input_dir.length() > 0:
-        input_dir = input_dir.normalize()
-        # Kasuta püsivat kiirenduse kordajat - Use permanent acceleration multiplier
-        current_acceleration = player_acceleration * player_stats["acceleration_multiplier"]
-        player_velocity += input_dir * current_acceleration * dt
+    # Dash'i ajal väldi tavalist liikumist - Avoid normal movement during dash
+    if not dash_state["active"]:
+        if input_dir.length() > 0:
+            input_dir = input_dir.normalize()
+            # Kasuta püsivat kiirenduse kordajat - Use permanent acceleration multiplier
+            # Thruster Tuning - kiiruse kordaja - Speed multiplier
+            current_acceleration = player_acceleration * player_stats["acceleration_multiplier"] * player_stats["speed_multiplier"]
+            player_velocity += input_dir * current_acceleration * dt
 
     # Hõõrdumine aeglustab kiirust
     player_velocity *= (1 - player_drag * dt)
@@ -397,27 +788,89 @@ def update_game_logic():
         if direction.length() != 0:
             direction = direction.normalize()
 
-            # Lase mängija äärest
+            # Lase mängija äärest - Shoot from player edge
             spawn_pos = player_pos + direction * (player_radius + projectile_radius)
+
+            # GPS tracker - vähenda hajumist - Reduce spread based on accuracy
+            # Baashajumine kõikidele kuulidele - Base spread for all bullets
+            # Algne hajumine on 15 kraadi - Initial spread is 15 degrees
+            base_spread = 15.0
+            accuracy = player_stats["accuracy"]
+            # Valem: spread väheneb 50% iga accuracy punkti kohta, max +2 = 0 spread
+            # Formula: spread decreases 50% per accuracy point, max +2 = 0 spread
+            single_shot_spread = base_spread * max(0.0, 1.0 - accuracy * 0.5)
+            
+            # Mitmelasu hajumine - Multi-shot spread
+            multi_spread = player_stats["multi_shot_spread"]
+            multi_effective_spread = multi_spread * max(0.0, 1.0 - accuracy * 0.5)
 
             # Kasuta püsivaid uuendusi - Use permanent upgrades for multi-shot
             shot_count = player_stats["multi_shot_count"]
-            spread = player_stats["multi_shot_spread"]
+
+            # Arvuta kuuli omadused - Calculate bullet properties for this shot
+            global knockback_shot_counter
+            knockback_shot_counter += 1
+
+            # Sharp bullets - crit chance roll
+            is_crit = random.random() < player_stats["crit_chance"]
+
+            # A bat - knockback every 5th shot
+            has_knockback = (knockback_shot_counter % 5 == 0) and player_stats["knockback_force"] > 0
+            knockback_force = player_stats["knockback_force"] if has_knockback else 0.0
+
+            # Green Juice - poison chance roll
+            has_poison = random.random() < player_stats["poison_chance"]
+            poison_damage = player_stats["poison_damage"] if has_poison else 0.0
+
+            # Waller - bounce properties
+            max_bounces = player_stats["max_bounces"]
+
+            # Heavy metal - proximity damage bonus
+            damage_multiplier = 1.0
+
+            # Ehitame kuuli omaduste dict-i - Build bullet properties dict
+            bullet_props = {
+                "is_crit": is_crit,
+                "has_knockback": has_knockback,
+                "knockback_force": knockback_force,
+                "has_poison": has_poison,
+                "poison_damage": poison_damage,
+                "poison_duration": 4.0,
+                "bounce_count": 0,
+                "max_bounces": max_bounces,
+                "damage_multiplier": 1.0,
+                "bullet_radius": projectile_radius * (1.5 if has_knockback else 1.0),  # A bat visual: bigger bullet
+            }
 
             if shot_count > 1:
                 middle_index = (shot_count - 1) / 2
                 for shot_index in range(shot_count):
-                    spread_angle = (shot_index - middle_index) * spread
+                    spread_angle = (shot_index - middle_index) * multi_effective_spread
                     shot_direction = direction.rotate(spread_angle)
                     # Loo kuul ja rakenda konksud - Create bullet and apply spawn hooks
-                    bullet = create_projectile(spawn_pos, shot_direction)
+                    bullet = create_projectile(spawn_pos, shot_direction, bullet_props)
                     bullet = upgrade_manager.hooks.dispatch_bullet_spawn(bullet, player_stats)
                     projectiles.append(bullet)
             else:
+                # Üks kuul - lisage väike juhuslik hajumine - Single bullet: add small random spread
+                random_offset = random.uniform(-single_shot_spread, single_shot_spread)
+                shot_direction = direction.rotate(random_offset)
                 # Loo kuul ja rakenda konksud - Create bullet and apply spawn hooks
-                bullet = create_projectile(spawn_pos, direction)
+                bullet = create_projectile(spawn_pos, shot_direction, bullet_props)
                 bullet = upgrade_manager.hooks.dispatch_bullet_spawn(bullet, player_stats)
                 projectiles.append(bullet)
+
+            # One bullet per sometimes - suvaline lisakuul - Random extra bullet
+            if player_stats["random_bullet_chance"] > 0:
+                if random.random() < player_stats["random_bullet_chance"]:
+                    # Suvaline suund - Random direction
+                    random_angle = random.uniform(0, 360)
+                    random_direction = pygame.Vector2(1, 0).rotate(random_angle)
+                    # Kopeeri kõik omadused peale suuna - Copy all properties except direction
+                    random_bullet = create_projectile(spawn_pos, random_direction, bullet_props)
+                    random_bullet = upgrade_manager.hooks.dispatch_bullet_spawn(random_bullet, player_stats)
+                    projectiles.append(random_bullet)
+
             # Mängi laskmise heli mängija asukohast - Play bullet shoot sound at player position
             sound_manager.play("bullet", position=pygame.Vector2(player_pos))
             current_shoot_cooldown = shoot_cooldown
@@ -433,19 +886,47 @@ def update_game_logic():
         old_positions.append(pygame.Vector2(projectile["pos"]))
         projectile["pos"] += projectile["vel"] * dt
 
-    # Seina kokkupõrke efektid
+    # Seina kokkupõrke efektid ja Waller hüpped
+    # Wall hit effects and Waller bounces
+    bullets_to_remove_wall = set()
     for i, projectile in enumerate(projectiles):
         if not point_in_polygon((projectile["pos"].x, projectile["pos"].y), map_vertices):
+            max_bounces = projectile.get("max_bounces", 0)
+            bounce_count = projectile.get("bounce_count", 0)
+
+            if bounce_count < max_bounces:
+                # Waller: arvuta peegeldus seina normaali järgi
+                # Waller: calculate reflection off wall normal
+                wall_normal = _get_wall_normal(projectile["pos"], map_vertices)
+                if wall_normal:
+                    # Peegelda kiirust - Reflect velocity
+                    vel = pygame.Vector2(projectile["vel"])
+                    dot_product = vel.dot(wall_normal)
+                    reflected_vel = vel - 2 * dot_product * wall_normal
+
+                    # Rakenda kiiruse suurendust - Apply speed increase
+                    speed_mult = projectile.get("bounce_speed_multiplier", 1.0) if "bounce_speed_multiplier" in projectile else 1.0
+                    # Use player_stats for bounce speed multiplier
+                    reflected_vel *= player_stats.get("bounce_speed_multiplier", 1.0)
+
+                    projectile["vel"] = reflected_vel
+                    projectile["bounce_count"] = bounce_count + 1
+
+                    # Tagasta kuul kaardi sisse - Push bullet back inside map
+                    projectile["pos"] = old_positions[i] + wall_normal * 5
+                    continue
+
+            # Eemalda kuul - Remove bullet
             # Mängi seina tabamuse heli kuuli asukohas - Play wall hit sound at projectile position
             sound_manager.play("wall_hit", position=pygame.Vector2(old_positions[i]))
             vfx_manager.spawn_hit_effect(old_positions[i], "wall",
                                          direction=projectile["vel"].normalize())
+            bullets_to_remove_wall.add(i)
 
-    # Eemalda kuulid, mis kaardilt välja lähevad
-    projectiles = [
-        p for p in projectiles
-        if point_in_polygon((p["pos"].x, p["pos"].y), map_vertices)
-    ]
+    # Eemalda seinast eemaldatud kuulid - Remove wall-removed bullets
+    if bullets_to_remove_wall:
+        projectiles = [p for i, p in enumerate(projectiles) if i not in bullets_to_remove_wall]
+        old_positions = [p for i, p in enumerate(old_positions) if i not in bullets_to_remove_wall]
 
     # ============================================
     # Enemy system - Vaenlaste süsteem
@@ -475,19 +956,68 @@ def update_game_logic():
         dist = enemy_unit.pos.distance_to(player_pos)
         min_dist = enemy_unit.radius + player_radius
         if dist < min_dist and dist > 0:
-            if not game_over and player_invulnerable_timer <= 0:
+            if not game_over and player_invulnerable_timer <= 0 and not dev_invulnerable:
+                # Kontrolli kaitseperioodi - Check grace period
+                # Kaitseperioodil on mängija haavamatu - During grace period, player is invulnerable
+                is_grace_period = upgrade_manager._is_first_hit and upgrade_manager.time_without_hit < upgrade_manager._grace_period
+
+                if is_grace_period:
+                    # Kaitseperiood - ei kahju ega uuendusi - Grace period: no damage, no upgrades
+                    # Märgi esimene tabamus toimunuks - Mark first hit as occurred
+                    upgrade_manager._is_first_hit = False
+                    upgrade_manager.time_without_hit = 0
+                    # Lüka vaenlane siiski tagasi - Still push enemy away
+                    push_dir = (enemy_unit.pos - player_pos).normalize()
+                    enemy_unit.pos = player_pos + push_dir * min_dist
+                    continue
+
+                # Tavaline tabamus - Normal hit
                 player_health -= 1
                 player_invulnerable_timer = player_invulnerable_duration
                 # Mängi mängija tabamuse heli - Play player hit sound at player position
                 sound_manager.play("player_hit", position=pygame.Vector2(player_pos))
 
+                # Cleave on hit - tapa lähedal olevad vaenlased, et vältida topelt tabamust
+                # Kill nearby enemies when hit to prevent getting hit twice in a row
+                cleave_radius = 250  # pikslites - in pixels (buffed from 120)
+                enemies_cleaved = []
+                for nearby_enemy in enemies:
+                    if nearby_enemy.pos.distance_to(player_pos) < cleave_radius:
+                        enemies_cleaved.append(nearby_enemy)
+                
+                for cleaved_enemy in enemies_cleaved:
+                    if not cleaved_enemy.is_alive():
+                        continue
+                    score += cleaved_enemy.score_value
+                    cleaved_enemy.health = 0
+                    vfx_manager.spawn_hit_effect(
+                        pygame.Vector2(cleaved_enemy.pos), "enemy"
+                    )
+                    sound_manager.play("enemy_dead", position=pygame.Vector2(cleaved_enemy.pos))
+                
+                # Eemalda surnud cleave'i vaenlased - Remove cleave-killed enemies
+                if enemies_cleaved:
+                    cleaved_ids = {id(e) for e in enemies_cleaved}
+                    enemies = [e for e in enemies if id(e) not in cleaved_ids]
+                    # Eemalda debuff'id kohapeal - Remove debuffs in place
+                    for eid in list(enemy_debuffs.keys()):
+                        if eid in cleaved_ids:
+                            del enemy_debuffs[eid]
+
                 # Uuenda uuenduste haldurit - Update upgrade manager on hit
-                upgrade_manager.on_player_hit()
+                # Oluline: salvesta aeg enne taimeri lähtestamist kuvamiseks
+                # Important: save time before resetting timer for display
+                time_before_hit = upgrade_manager.time_without_hit
+                should_trigger = upgrade_manager.should_trigger_upgrade()
+                upgrade_manager.on_player_hit()  # Lähtestab taimeri - Resets the timer
 
                 # Kui grazes periood on möödas, näita uuenduste valikut
                 # If grace period passed, show upgrade selection
-                if upgrade_manager.should_trigger_upgrade():
+                if should_trigger:
                     upgrade_manager.generate_choices()
+                    upgrade_selection_screen.set_time_without_hit(time_before_hit)
+                    upgrade_selection_screen._build_ui()  # Ehitab kaardid uuesti - Rebuild cards
+                    upgrade_selection_screen.reset_cooldown()  # 0.5s viivitus enne klikkimist - 0.5s delay before clicking
                     state_manager.push_state(GameState.UPGRADE_SELECTION)
 
                 if player_health <= 0:
@@ -505,24 +1035,77 @@ def update_game_logic():
     # Collision detection - Kokkupõrked
     # ============================================
     bullets_to_remove = set()
-    enemies_to_remove = set()
+    # enemies_to_remove already initialized above for cactus armor
 
     for p_idx, projectile in enumerate(projectiles if not game_over else []):
         for e_idx, enemy_unit in enumerate(enemies):
             if e_idx in enemies_to_remove:
                 continue
-            if enemy_unit.collides_with(projectile["pos"], projectile_radius):
+            # Kasuta kuuli raadiust kokkupõrke kontrollimiseks - Use bullet radius for collision
+            bullet_radius = projectile.get("bullet_radius", projectile_radius)
+            if enemy_unit.collides_with(projectile["pos"], bullet_radius):
                 bullets_to_remove.add(p_idx)
-                # Mängi vaenlase tabamuse heli vaenlase asukohas - Play enemy hit sound at enemy position
+
+                # ============================================
+                # Kahju arvutamine - Damage calculation
+                # ============================================
+                base_damage = 10  # Baaskahju - Base damage (×10 scale)
+
+                # Sharp bullets - kriitiline löök - Critical strike
+                if projectile.get("is_crit", False):
+                    base_damage = round(projectile.get("crit_multiplier", 3.0) * base_damage)
+
+                # Heavy metal - läheduse kahju boonus - Proximity damage bonus
+                enemy_dist = enemy_unit.pos.distance_to(player_pos)
+                proximity_bonus = player_stats.get("proximity_damage_bonus", 0.0)
+                if enemy_dist < HEAVY_METAL_RADIUS and proximity_bonus > 0:
+                    # Rakenda ainult otsesele kahjule - Apply to direct damage only
+                    base_damage = round(base_damage * (1 + proximity_bonus))
+
+                # Mängi vaenlase tabamuse heli vaenlase asukohas - Play enemy hit sound
                 sound_manager.play("enemy_hit", position=pygame.Vector2(enemy_unit.pos))
-                if enemy_unit.take_damage(1):
+
+                # A bat - tagasilöök - Knockback
+                if projectile.get("has_knockback", False):
+                    kb_force = projectile.get("knockback_force", 0.0)
+                    if kb_force > 0:
+                        # Lüka vaenlast tagasi kuuli liikumissuunas - Push enemy in bullet direction
+                        bullet_vel = pygame.Vector2(projectile["vel"])
+                        if bullet_vel.length() > 0:
+                            kb_direction = bullet_vel.normalize()
+                            enemy_unit.pos += kb_direction * kb_force * dt * 2
+
+                # Green Juice - mürgi rakendamine - Apply poison
+                if projectile.get("has_poison", False):
+                    poison_dmg = projectile.get("poison_damage", 0.0)
+                    poison_dur = projectile.get("poison_duration", 4.0)
+                    if poison_dmg > 0:
+                        enemy_id = id(enemy_unit)
+                        # Mürgi uuendamine: lähtesta taimer - Refresh poison: reset timer
+                        if enemy_id in enemy_debuffs:
+                            enemy_debuffs[enemy_id]["poison_timer"] = poison_dur
+                            enemy_debuffs[enemy_id]["poison_damage"] = poison_dmg
+                        else:
+                            enemy_debuffs[enemy_id] = {
+                                "poison_timer": poison_dur,
+                                "poison_damage": poison_dmg,
+                            }
+
+                # Rakenda kahju vaenlasele - Apply damage to enemy
+                if enemy_unit.take_damage(base_damage):
                     enemies_to_remove.add(e_idx)
                     score += enemy_unit.score_value
-                    # Mängi vaenlase surma heli vaenlase asukohas - Play enemy death sound at enemy position
+                    # Mängi vaenlase surma heli vaenlase asukohas - Play enemy death sound
                     sound_manager.play("enemy_dead", position=pygame.Vector2(enemy_unit.pos))
                     vfx_manager.spawn_hit_effect(
                         pygame.Vector2(enemy_unit.pos), "enemy"
                     )
+
+                    # Eemalda debuff'id surnud vaenlaselt - Remove debuffs from dead enemy
+                    enemy_id = id(enemy_unit)
+                    if enemy_id in enemy_debuffs:
+                        del enemy_debuffs[enemy_id]
+
                 break
 
     # Eemalda tabatud kuulid ja surnud vaenlased
@@ -530,6 +1113,9 @@ def update_game_logic():
         projectiles = [p for i, p in enumerate(projectiles) if i not in bullets_to_remove]
     if enemies_to_remove:
         enemies = [e for i, e in enumerate(enemies) if i not in enemies_to_remove]
+    # Eemalda cactus armor'iga surnud vaenlased - Remove cactus armor killed enemies by ID
+    if enemies_to_remove_cactus:
+        enemies = [e for e in enemies if id(e) not in enemies_to_remove_cactus]
 
     # ============================================
     # Player trail - Mängija jälg
@@ -582,6 +1168,9 @@ while running:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 state_manager.push_state(GameState.PAUSED)
                 break
+            # PLUS klahv avab arendaja režiimi - PLUS key toggles dev mode
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_PLUS:
+                dev_panel.toggle()
 
         update_game_logic()
 
@@ -591,6 +1180,22 @@ while running:
             state_manager.change_state(GameState.GAME_OVER)
 
         render_game_screen()
+
+        # Arendaja paneeli joonistamine - Draw dev panel
+        if dev_panel.active:
+            dev_panel.handle_events(events)
+            dev_panel.update(dt)
+            # Build upgrade counts for display
+            upgrade_counts = {}
+            for upgrade in upgrade_manager.active_upgrades:
+                uid = upgrade.get("id", "unknown")
+                upgrade_counts[uid] = upgrade_counts.get(uid, 0) + 1
+            dev_panel.set_upgrade_counts(upgrade_counts)
+            dev_panel.draw(screen)
+            dev_panel.draw_info_overlay(screen, player_stats, difficulty_manager, enemies, game_time, upgrade_counts)
+
+        # Arendaja haavamatus - Dev invincibility (handled via callback)
+        # Just ensure dev_invulnerable flag is respected
 
     # ============================================
     # PAUSED state - Mäng on peatatud
