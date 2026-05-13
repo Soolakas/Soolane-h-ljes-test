@@ -7,7 +7,7 @@ from upgrade_registry import BASE_RARITY_CHANCES, Rarity
 # Kõiki neid väärtusi on lihtne muuta tasakaalustamiseks
 # All these values are easily tweakable for balancing
 
-CHANCE_SCALE_RATE = 0.02          # Kui kiiresti tõenäosused muutuvad sekundis
+CHANCE_SCALE_RATE = 0.002         # Kui kiiresti tõenäosused muutuvad sekundis
                                   # How fast chances change per second
 
 # Iga rariteedi kasvutegur - Growth factor per rarity tier

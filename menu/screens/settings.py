@@ -120,16 +120,9 @@ class SettingsScreen(BaseScreen):
                      font_size=20)
         )
 
-        # Salvesta-nupp - salvestab seaded faili
-        self.buttons.append(
-            UIButton("SAVE", (content_x + 115, y), (100, 38),
-                     callback=self._save_settings,
-                     font_size=20)
-        )
-
         # Lähtesta-nupp - taastab vaikeväärtused
         self.buttons.append(
-            UIButton("RESET", (content_x + 230, y), (100, 38),
+            UIButton("RESET", (content_x + 115, y), (100, 38),
                      callback=self._reset_settings,
                      font_size=20, bg_color=(80, 40, 40), hover_color=(110, 50, 50))
         )
@@ -190,18 +183,24 @@ class SettingsScreen(BaseScreen):
         self._build_ui()
 
     def _reset_settings(self):
-        """Lähtestab kõik seaded vaikeväärtustele ja salvestab need."""
+        """Lähtestab kõik seaded vaikeväärtustele ja rakendab need."""
         self.settings.reset()
+
+        # Rakenda resolutsioon - Apply resolution
+        if self.screen is not None:
+            new_res = self.settings.resolution
+            flags = pygame.FULLSCREEN if self.settings.fullscreen else 0
+            self.screen = pygame.display.set_mode(new_res, flags)
+
+        # Rakenda helitugevus - Apply volume
+        if self.sound_manager:
+            self.sound_manager.set_volume(self.settings.sfx_volume)
 
         # Ehitab ekraani täielikult uuesti üles uute seadete ja keskmise paneeliga
         self.labels.clear()
         self.buttons.clear()
         self.sliders.clear()
         self._build_ui()
-
-    def _save_settings(self):
-        """Salvestab kõik seaded faili."""
-        self.settings.save()
 
     def handle_events(self, events):
         """Töötleb kõiki sisendsündmuseid nuppude ja liugurite jaoks."""

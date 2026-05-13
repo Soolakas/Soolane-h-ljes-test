@@ -13,9 +13,9 @@ DIFFICULTY_INITIAL_DELAY = 10.0   # Grace period before ramp begins
 # ============================================
 # Formula: max(MIN, BASE * exp(-RATE * time))
 # Valem: max(MIN, BASE * exp(-RATE * aeg))
-BASE_SPAWN_INTERVAL = 2.0          # Starting seconds between waves
+BASE_SPAWN_INTERVAL = 5.0          # Starting seconds between waves
 MIN_SPAWN_INTERVAL = 0.3           # Fastest possible spawn interval
-SPAWN_INTERVAL_RATE = 0.015        # How fast interval decreases per second
+SPAWN_INTERVAL_RATE = 0.0045       # How fast interval decreases per second
 
 # ============================================
 # Wave size scaling - Lainete suuruse skaala
@@ -25,7 +25,7 @@ SPAWN_INTERVAL_RATE = 0.015        # How fast interval decreases per second
 BASE_WAVE_SIZE_MIN = 1
 BASE_WAVE_SIZE_MAX = 4
 WAVE_SIZE_MIN_RATE = 0.02          # Minimum wave size increase per second
-WAVE_SIZE_MAX_RATE = 0.05          # Maximum wave size increase per second
+WAVE_SIZE_MAX_RATE = 0.02          # Maximum wave size increase per second
 MAX_WAVE_SIZE_HARD_CAP = 15        # Absolute max enemies per wave (respecting MAX_ENEMIES)
 
 # ============================================
@@ -34,7 +34,7 @@ MAX_WAVE_SIZE_HARD_CAP = 15        # Absolute max enemies per wave (respecting M
 # Formula: BASE + floor(RATE * time)
 # Valem: BASE + floor(RATE * aeg)
 BASE_HEALTH_BONUS = 0
-HEALTH_BONUS_RATE = 0.3            # Bonus health per second (was 0.03, now ×10 = ~1 HP per ~3.3s)
+HEALTH_BONUS_RATE = 0.02           # Bonus health per second (1 HP at 60s)
 
 # ============================================
 # Enemy speed scaling - Vaenlase kiiruse skaala
@@ -42,7 +42,7 @@ HEALTH_BONUS_RATE = 0.3            # Bonus health per second (was 0.03, now ×10
 # Formula: BASE * (1 + RATE * sqrt(time)) - sqrt for diminishing returns
 # Valem: BASE * (1 + RATE * sqrt(aeg)) - sqrt kahaneva tootluse jaoks
 BASE_SPEED_MULTIPLIER = 1.0
-SPEED_RATE = 0.08                  # Speed increase rate
+SPEED_RATE = 0.010                 # Speed increase rate (0.07 bonus at 60s)
 MAX_SPEED_MULTIPLIER = 2.0         # Absolute cap on speed (was 3x, now 2x)
 
 # ============================================
@@ -50,8 +50,8 @@ MAX_SPEED_MULTIPLIER = 2.0         # Absolute cap on speed (was 3x, now 2x)
 # ============================================
 # Weights shift infinitely toward harder types
 # Kaalud nihkuvad lõpmatult raskemate tüüpide poole
-BASE_WEIGHTS = (0.7, 0.25, 0.05)   # (basic, fast, tank) at start
-WEIGHT_SHIFT_RATE = 0.005          # How fast weights shift per second
+BASE_WEIGHTS = (0.89, 0.055, 0.055)  # (basic, fast, tank) - base weights
+WEIGHT_SHIFT_RATE = 0.001           # How fast weights shift per second (gentle ramp)
 
 
 class DifficultyManager:
@@ -138,22 +138,25 @@ class DifficultyManager:
     def get_type_weights(self):
         """Get enemy type selection weights - Tüüpide kaalud.
         
-        Weights shift infinitely toward harder types over time.
-        Kaalud nihkuvad lõpmatult raskemate tüüpide poole.
-
+        Smooth exponential curve targeting approximate checkpoints:
+        - 1 min (50s eff): basic ~85%, fast/tank ~7.5% each
+        - 2 min (110s eff): basic ~60%, fast/tank ~20% each
+        - 3 min (170s eff): basic ~40%, fast/tank ~30% each
+        
         Returns:
             tuple: (basic_weight, fast_weight, tank_weight) for random selection.
         """
         t = self._get_effective_time()
-        shift = WEIGHT_SHIFT_RATE * t
         
-        # Shift weight from basic to tank, fast stays relatively stable
-        basic = max(0.05, BASE_WEIGHTS[0] - shift * 1.5)
-        tank = min(0.70, BASE_WEIGHTS[2] + shift)
-        fast = 1.0 - basic - tank  # Fast gets the remainder
-        fast = max(0.10, fast)     # Ensure fast has at least 10%
+        # Exponential decay from 95% over time (no cap, no floor)
+        basic = 0.95 * math.exp(-0.005 * t)
         
-        # Normalize to sum to 1.0
+        # Fast and tank share remaining weight equally
+        other = 1.0 - basic
+        fast = other * 0.5
+        tank = other * 0.5
+        
+        # Normalize
         total = basic + fast + tank
         return (basic / total, fast / total, tank / total)
 
