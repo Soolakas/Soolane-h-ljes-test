@@ -33,7 +33,7 @@ dt = 0  # Eelneva kaadri kestus sekundites
 # Seaded ja olekuhaldur - Settings and state manager
 # ============================================
 settings = GameSettings()        # Mängu seadete objekt (salvestab JSON faili)
-state_manager = StateManager()   # Olekuhaldur (menüü, mäng, paus jne)
+state_manager = StateManager()   # Olekuhaldur (menü, mäng, paus jne)
 
 # ============================================
 # Helihaldur - Sound manager

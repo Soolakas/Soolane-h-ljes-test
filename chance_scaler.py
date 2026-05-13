@@ -4,7 +4,7 @@ from upgrade_registry import BASE_RARITY_CHANCES, Rarity
 # ============================================
 # Tõenäosuste skaleerimise seaded - Chance scaling configuration
 # ============================================
-# Kõiki neid väärtusi on lihtne muuta tasakaalustamiseks
+# Kõik neid väärtusi on lihtne muuta tasakaalustamiseks
 # All these values are easily tweakable for balancing
 
 CHANCE_SCALE_RATE = 0.002         # Kui kiiresti tõenäosused muutuvad sekundis
