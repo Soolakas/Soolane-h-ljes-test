@@ -125,11 +125,12 @@ register_upgrade({
     "apply": lambda stats: stats.__setitem__("accuracy", min(3, stats.get("accuracy", 0) + 1)),
 })
 
-# 5. A bat (the wooden type) - Common, knockback every 5th shot, exponential decrease
+# 5. A bat (the wooden type) - Common, knockback every 3rd shot, 2x knockback
+# 5. A bat (the wooden type) - Common, knockback every 3rd shot, 2x knockback
 register_upgrade({
     "id": "a_bat",
     "name": "A bat (the wooden type)",
-    "description": "Every fifth shot pushes the enemy back a little",
+    "description": "Every third shot pushes the enemy back a lot",
     "rarity": Rarity.COMMON,
     "apply": lambda stats: stats.__setitem__(
         "knockback_force",
@@ -142,16 +143,16 @@ _original_bat_apply = UPGRADES[-1]["apply"]
 def _bat_apply_with_counter(stats):
     stacks = stats.get("_bat_stacks", 0) + 1
     stats["_bat_stacks"] = stacks
-    # Each stack ADDS more knockback force (not less)
-    # Stack 1: 500, Stack 2: 750, Stack 3: 1000, Stack 4: 1250...
-    stats["knockback_force"] = 500 + 250 * (stacks - 1)
+    # Each stack ADDS more knockback force (not less), 2x then 1.5x = 3x total
+    # Stack 1: 1500, Stack 2: 2250, Stack 3: 3000, Stack 4: 3750...
+    stats["knockback_force"] = 1500 + 750 * (stacks - 1)
 UPGRADES[-1]["apply"] = _bat_apply_with_counter
 
 # 6. Green Juice - Common, poison chance + damage, heavy exponential dropoff
 register_upgrade({
     "id": "green_juice",
     "name": "Green Juice",
-    "description": "Chance to inflict poison that deals flat damage per second for 4s",
+    "description": "Chance to inflict poison that deals flat damage per second for 4s (40% chance on first upgrade)",
     "rarity": Rarity.COMMON,
     "apply": lambda stats: None,  # Placeholder, replaced below
 })
@@ -159,10 +160,10 @@ register_upgrade({
 def _green_juice_apply(stats):
     stacks = stats.get("_juice_stacks", 0) + 1
     stats["_juice_stacks"] = stacks
-    # Buffed + scaled ×10: 1st: 15% chance, 5.0 HP/s
-    # 2nd: +10% (25%), +1.5 (6.5 HP/s)
-    # 3rd: +7% (32%), +1.0 (7.5 HP/s)
-    chance_increase = 0.15 if stacks == 1 else 0.10 * (0.7 ** (stacks - 2))
+    # Buffed + scaled ×10: 1st: 40% chance, 5.0 HP/s
+    # 2nd: +10% (50%), +1.5 (6.5 HP/s)
+    # 3rd: +7% (57%), +1.0 (7.5 HP/s)
+    chance_increase = 0.40 if stacks == 1 else 0.10 * (0.7 ** (stacks - 2))
     damage_increase = 5.0 if stacks == 1 else 1.5 * (0.67 ** (stacks - 2))
     stats["poison_chance"] = min(1.0, stats.get("poison_chance", 0.0) + chance_increase)
     stats["poison_damage"] = stats.get("poison_damage", 0.0) + damage_increase
@@ -197,11 +198,6 @@ register_upgrade({
 def _random_bullet_apply(stats):
     stacks = stats.get("_random_stacks", 0) + 1
     stats["_random_stacks"] = stacks
-    # 1st: 30%, 2nd: 30%+0.07*0.85=36%, 3rd: 30%+0.07*0.85+0.07*0.85^2=40.5%
-    bonus = sum(0.07 * (0.85 ** i) for i in range(stacks))
-    stats["random_bullet_chance"] = min(0.95, 0.30 + bonus - 0.07)  # First stack is 30%, subsequent add decreasing amounts
-    if stacks == 1:
-        stats["random_bullet_chance"] = 0.30
 UPGRADES[-1]["apply"] = _random_bullet_apply
 
 # 7. Cactus armor - Common, kills close enemies, 2nd stack = bullet explosion, max 2

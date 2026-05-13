@@ -33,7 +33,7 @@ class UpgradeManager:
         self.time_without_hit = 0.0         # Aeg viimasest tabamusest - Time since last hit
         self._chance_scale_rate = chance_scale_rate
         self._grace_period = grace_period
-        self._is_first_hit = True           # Kas esimene tabamus - Track if first hit
+        self._hit_count = 0               # Tabamuste arv - Hit counter
         self._pending_choices = []          # Praegused valikud - Current upgrade choices
         self.hooks = UpgradeHooks()         # Konksude haldur - Hook manager
 
@@ -41,7 +41,7 @@ class UpgradeManager:
         """Lähtesta uue run-i jaoks - Reset for new run."""
         self.active_upgrades = []
         self.time_without_hit = 0.0
-        self._is_first_hit = True
+        self._hit_count = 0
         self._pending_choices = []
         self.hooks.clear()
 
@@ -56,11 +56,13 @@ class UpgradeManager:
     def on_player_hit(self):
         """Kutsutakse välja mängija tabamisel - Called when player gets hit.
         
-        Lähtestab taimeri ja märgib esimese tabamuse.
-        Resets timer and marks first hit.
+        Suurendab tabamuste loendurit ja seadistab taimeri.
+        Esimene tabamus: 30s, teine: 60s, kolmas: 90s jne.
+        Increments hit counter and sets timer.
+        First hit: 30s, second: 60s, third: 90s, etc.
         """
-        self.time_without_hit = 0
-        self._is_first_hit = False
+        self._hit_count += 1
+        self.time_without_hit = self._hit_count * 30
 
     def should_trigger_upgrade(self):
         """Kas uuenduse valik peaks käivituma - Should upgrade selection trigger.
@@ -71,7 +73,7 @@ class UpgradeManager:
         Returns:
             bool: True kui uuenduse valik peaks toimuma.
         """
-        if self._is_first_hit:
+        if self._hit_count <= 1:
             return self.time_without_hit >= self._grace_period
         return True
 

@@ -101,7 +101,7 @@ rotation_speed = 8                            # Pöörlemise kiirus
 player_max_health = 5                         # Maksimaalne tervis - 5 hits to die
 player_health = player_max_health             # Praegune tervis
 player_invulnerable_timer = 0.0               # Haavamatususe taimer
-player_invulnerable_duration = 1.0            # Haavamatususe kestus
+player_invulnerable_duration = 3.0            # Haavamatususe kestus
 game_over = False                             # Kas mäng on läbi
 
 player_velocity = pygame.Vector2(0, 0)        # Mängija kiirus (triivfüüsika)
@@ -134,7 +134,7 @@ player_stats = {
     "poison_damage": 0.0,             # Green Juice (flat HP/s, exponential decrease)
     "max_bounces": 0,                 # Waller (bounces off walls)
     "bounce_speed_multiplier": 1.0,   # Waller (velocity increase on bounce)
-    "random_bullet_chance": 0.0,       # One bullet per sometimes (exponential decrease)
+    "_random_stacks": 0,               # One bullet per sometimes (independent 30% per stack)
     "dash_count": 0,                  # The shift key (1 or 2 dashes)
     "proximity_damage_bonus": 0.0,     # Heavy metal (+0.20 per stack, infinite)
     "cactus_armor_stacks": 0,         # Cactus armor (1 or 2, 3+ useless)
@@ -173,7 +173,7 @@ HEAVY_METAL_RADIUS = 250        # Heavy metal'i kahju aura raadius - Heavy metal
 # ============================================
 # Knockback counter - Tagasilöögi loendur
 # ============================================
-knockback_shot_counter = 0  # Loeb lasku, et iga 5. lasu tekitaks tagasilöögi - Counts shots for knockback every 5th
+knockback_shot_counter = 0  # Loeb lasku, et iga 3. lasu tekitaks tagasilöögi - Counts shots for knockback every 3rd
 
 score = 0  # Punktid
 
@@ -228,7 +228,7 @@ def init_game():
         "poison_damage": 0.0,
         "max_bounces": 0,
         "bounce_speed_multiplier": 1.0,
-        "random_bullet_chance": 0.0,
+        "_random_stacks": 0,
         "dash_count": 0,
         "proximity_damage_bonus": 0.0,
         "cactus_armor_stacks": 0,
@@ -277,10 +277,12 @@ game_over_screen.set_restart_callback(reset_game)
 # Seame uuenduse valiku tagasihelistamise - Set upgrade selection callback
 def on_upgrade_selected(index):
     """Rakenda valitud uuendus ja naase mängu - Apply selected upgrade and resume game."""
+    global player_invulnerable_timer
     choices = upgrade_manager.pending_choices
     if 0 <= index < len(choices):
         upgrade_manager.apply_upgrade(choices[index], player_stats)
     upgrade_manager.clear_pending()
+    player_invulnerable_timer = player_invulnerable_duration
     state_manager.pop_state()  # Naase mängu olekusse - Return to PLAYING state
 
 upgrade_selection_screen.set_callback(on_upgrade_selected)
@@ -793,14 +795,12 @@ def update_game_logic():
 
             # GPS tracker - vähenda hajumist - Reduce spread based on accuracy
             # Baashajumine kõikidele kuulidele - Base spread for all bullets
-            # Algne hajumine on 15 kraadi - Initial spread is 15 degrees
-            base_spread = 15.0
+            # Algne hajumine on 21 kraadi - Initial spread is 21 degrees
+            base_spread = 21.0
             accuracy = player_stats["accuracy"]
             # Valem: spread väheneb 50% iga accuracy punkti kohta, max +2 = 0 spread
             # Formula: spread decreases 50% per accuracy point, max +2 = 0 spread
             single_shot_spread = base_spread * max(0.0, 1.0 - accuracy * 0.5)
-            
-            # Mitmelasu hajumine - Multi-shot spread
             multi_spread = player_stats["multi_shot_spread"]
             multi_effective_spread = multi_spread * max(0.0, 1.0 - accuracy * 0.5)
 
@@ -815,7 +815,7 @@ def update_game_logic():
             is_crit = random.random() < player_stats["crit_chance"]
 
             # A bat - knockback every 5th shot
-            has_knockback = (knockback_shot_counter % 5 == 0) and player_stats["knockback_force"] > 0
+            has_knockback = (knockback_shot_counter % 3 == 0) and player_stats["knockback_force"] > 0
             knockback_force = player_stats["knockback_force"] if has_knockback else 0.0
 
             # Green Juice - poison chance roll
@@ -861,12 +861,11 @@ def update_game_logic():
                 projectiles.append(bullet)
 
             # One bullet per sometimes - suvaline lisakuul - Random extra bullet
-            if player_stats["random_bullet_chance"] > 0:
-                if random.random() < player_stats["random_bullet_chance"]:
-                    # Suvaline suund - Random direction
+            random_stacks = player_stats.get("_random_stacks", 0)
+            for _ in range(random_stacks):
+                if random.random() < 0.30:
                     random_angle = random.uniform(0, 360)
                     random_direction = pygame.Vector2(1, 0).rotate(random_angle)
-                    # Kopeeri kõik omadused peale suuna - Copy all properties except direction
                     random_bullet = create_projectile(spawn_pos, random_direction, bullet_props)
                     random_bullet = upgrade_manager.hooks.dispatch_bullet_spawn(random_bullet, player_stats)
                     projectiles.append(random_bullet)
@@ -959,12 +958,12 @@ def update_game_logic():
             if not game_over and player_invulnerable_timer <= 0 and not dev_invulnerable:
                 # Kontrolli kaitseperioodi - Check grace period
                 # Kaitseperioodil on mängija haavamatu - During grace period, player is invulnerable
-                is_grace_period = upgrade_manager._is_first_hit and upgrade_manager.time_without_hit < upgrade_manager._grace_period
+                is_grace_period = upgrade_manager._hit_count == 0 and upgrade_manager.time_without_hit < upgrade_manager._grace_period
 
                 if is_grace_period:
                     # Kaitseperiood - ei kahju ega uuendusi - Grace period: no damage, no upgrades
                     # Märgi esimene tabamus toimunuks - Mark first hit as occurred
-                    upgrade_manager._is_first_hit = False
+                    upgrade_manager._hit_count = 1
                     upgrade_manager.time_without_hit = 0
                     # Lüka vaenlane siiski tagasi - Still push enemy away
                     push_dir = (enemy_unit.pos - player_pos).normalize()

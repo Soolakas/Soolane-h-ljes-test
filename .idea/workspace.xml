@@ -5,14 +5,14 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="3ef28ada-5220-4c07-a3db-94b1de9964f4" name="Changes" comment="Sfx done">
-      <change afterPath="$PROJECT_DIR$/assets/Tables/Run Upgrades - Sheet1 (1).csv" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/assets/Tables/Run Upgrades - Sheet1.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/chance_scaler.py" beforeDir="false" afterPath="$PROJECT_DIR$/chance_scaler.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/difficulty_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/difficulty_manager.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/enemy.py" beforeDir="false" afterPath="$PROJECT_DIR$/enemy.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/game.py" beforeDir="false" afterPath="$PROJECT_DIR$/game.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/menu/screens/upgrade_selection.py" beforeDir="false" afterPath="$PROJECT_DIR$/menu/screens/upgrade_selection.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/spawn_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/spawn_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/menu/screens/dev_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/menu/screens/dev_panel.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/menu/screens/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/menu/screens/settings.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/settings.json" beforeDir="false" afterPath="$PROJECT_DIR$/settings.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/upgrade_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/upgrade_manager.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/upgrade_registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/upgrade_registry.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
