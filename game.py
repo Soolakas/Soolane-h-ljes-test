@@ -33,7 +33,7 @@ dt = 0  # Eelneva kaadri kestus sekundites
 # Seaded ja olekuhaldur - Settings and state manager
 # ============================================
 settings = GameSettings()        # Mängu seadete objekt (salvestab JSON faili)
-state_manager = StateManager()   # Olekuhaldur (menüü, mäng, paus jne)
+state_manager = StateManager()   # Olekuhaldur (menü, mäng, paus jne)
 
 # ============================================
 # Helihaldur - Sound manager
@@ -281,6 +281,7 @@ def on_upgrade_selected(index):
     choices = upgrade_manager.pending_choices
     if 0 <= index < len(choices):
         upgrade_manager.apply_upgrade(choices[index], player_stats)
+    difficulty_manager.elapsed_time = 30.0 * upgrade_manager._hit_count
     upgrade_manager.clear_pending()
     player_invulnerable_timer = player_invulnerable_duration
     state_manager.pop_state()  # Naase mängu olekusse - Return to PLAYING state

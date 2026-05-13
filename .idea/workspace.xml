@@ -4,16 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3ef28ada-5220-4c07-a3db-94b1de9964f4" name="Changes" comment="Sfx done">
-      <change beforePath="$PROJECT_DIR$/chance_scaler.py" beforeDir="false" afterPath="$PROJECT_DIR$/chance_scaler.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/difficulty_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/difficulty_manager.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/enemy.py" beforeDir="false" afterPath="$PROJECT_DIR$/enemy.py" afterDir="false" />
+    <list default="true" id="3ef28ada-5220-4c07-a3db-94b1de9964f4" name="Changes" comment="Bugs/Balance">
       <change beforePath="$PROJECT_DIR$/game.py" beforeDir="false" afterPath="$PROJECT_DIR$/game.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/menu/screens/dev_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/menu/screens/dev_panel.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/menu/screens/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/menu/screens/settings.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/settings.json" beforeDir="false" afterPath="$PROJECT_DIR$/settings.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/upgrade_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/upgrade_manager.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/upgrade_registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/upgrade_registry.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -146,7 +138,14 @@
       <option name="presentableId" value="LOCAL−00003" />
       <updated>1778525463134</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL−00004" summary="Bugs/Balance">
+      <option name="closed" value="true" />
+      <created>1778709137178</created>
+      <option name="number" value="LOCAL−00004" />
+      <option name="presentableId" value="LOCAL−00004" />
+      <updated>1778709137178</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -179,7 +178,8 @@
     <MESSAGE value="Viimane merge" />
     <MESSAGE value="Sfx import" />
     <MESSAGE value="Sfx done" />
-    <option name="LAST_COMMIT_MESSAGE" value="Sfx done" />
+    <MESSAGE value="Bugs/Balance" />
+    <option name="LAST_COMMIT_MESSAGE" value="Bugs/Balance" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Soolane_h_ljes$game.coverage" NAME="game Coverage Results" MODIFIED="1773925639689" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
