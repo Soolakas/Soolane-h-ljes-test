@@ -193,6 +193,7 @@ trail_timer = 0
 trail = []
 
 game_time = 0  # Mängu aeg
+display_time = 0  # Ekraanil kuvatav aeg - lähtestub uuenduse valimisel
 
 
 def init_game():
@@ -200,7 +201,7 @@ def init_game():
     Initialize all game variables to their starting values."""
     global player_pos, player_angle, target_angle, player_health, player_invulnerable_timer
     global game_over, player_velocity, shoot_timer, projectiles, score
-    global enemies, trail_timer, trail, game_time, player_stats
+    global enemies, trail_timer, trail, game_time, display_time, player_stats
     global enemy_debuffs, dash_state, cactus_armor_aura_timer, knockback_shot_counter
 
     player_pos = pygame.Vector2(center, center)
@@ -256,6 +257,7 @@ def init_game():
     trail_timer = 0
     trail = []
     game_time = 0
+    display_time = 0
 
     # Lähtestame ka raskuse, tekitamise ja uuendused
     difficulty_manager.elapsed_time = 0.0
@@ -277,16 +279,30 @@ game_over_screen.set_restart_callback(reset_game)
 # Seame uuenduse valiku tagasihelistamise - Set upgrade selection callback
 def on_upgrade_selected(index):
     """Rakenda valitud uuendus ja naase mängu - Apply selected upgrade and resume game."""
-    global player_invulnerable_timer
+    global player_invulnerable_timer, display_time
     choices = upgrade_manager.pending_choices
     if 0 <= index < len(choices):
         upgrade_manager.apply_upgrade(choices[index], player_stats)
     difficulty_manager.elapsed_time = 30.0 * upgrade_manager._hit_count
+    display_time = 0
     upgrade_manager.clear_pending()
     player_invulnerable_timer = player_invulnerable_duration
     state_manager.pop_state()  # Naase mängu olekusse - Return to PLAYING state
 
 upgrade_selection_screen.set_callback(on_upgrade_selected)
+
+def on_heal_selected():
+    """Taasta tervis ja naase mängu - Restore health and return to game."""
+    global player_health, display_time, player_invulnerable_timer
+    heal_amount = upgrade_selection_screen._get_heal_amount()
+    player_health = min(player_max_health, player_health + heal_amount)
+    difficulty_manager.elapsed_time = 30.0 * upgrade_manager._hit_count
+    display_time = 0
+    upgrade_manager.clear_pending()
+    player_invulnerable_timer = player_invulnerable_duration
+    state_manager.pop_state()  # Naase mängu olekusse - Return to PLAYING state
+
+upgrade_selection_screen.set_heal_callback(on_heal_selected)
 
 # ============================================
 # Developer mode - Arendaja režiim
@@ -487,17 +503,22 @@ def render_game_screen():
 
     # Kuulid - glow line projectiles with upgrade visuals
     for projectile in projectiles:
-        # Sharp bullets - kriitiline kuul on kollane/oranž - Critical bullets are yellow/orange
-        if projectile.get("is_crit", False):
-            # Ajutine salvesta algne värv ja joonista eri värvi
-            # Temporarily save original color and draw different color
+        # Both crit + knockback - punane ja suurem - Red and bigger combined effect
+        if projectile.get("is_crit_knockback", False):
+            bullet_radius = projectile.get("bullet_radius", projectile_radius)
+            screen_pos = (
+                int(projectile["pos"].x - camera_offset.x),
+                int(projectile["pos"].y - camera_offset.y),
+            )
+            pygame.draw.circle(screen, (255, 50, 50), screen_pos, int(bullet_radius), 2)
+        # Sharp bullets - kriitiline kuul on oranž - Critical bullets are orange
+        elif projectile.get("is_crit", False):
             orig_color = textures.PROJECTILE_COLOR
             textures.PROJECTILE_COLOR = (255, 160, 30)  # Orange for crit
             textures.draw_projectile(screen, projectile, camera_offset)
             textures.PROJECTILE_COLOR = orig_color
         # A bat - tagasilöögi kuul on suurem - Knockback bullet is bigger
         elif projectile.get("has_knockback", False):
-            # Joonista suurem kuul - Draw bigger bullet
             bullet_radius = projectile.get("bullet_radius", projectile_radius)
             screen_pos = (
                 int(projectile["pos"].x - camera_offset.x),
@@ -578,7 +599,7 @@ def update_game_logic():
     Updates all game logic: input, movement, shooting, collisions, enemies."""
     global player_pos, player_angle, target_angle, player_health, player_invulnerable_timer
     global game_over, player_velocity, shoot_timer, projectiles, score
-    global enemies, trail_timer, trail, game_time
+    global enemies, trail_timer, trail, game_time, display_time
 
     # Uuenda mängija asukohta helihaldurile kauguse arvutamiseks
     # Update player position for sound distance calculation
@@ -831,8 +852,9 @@ def update_game_logic():
 
             # Ehitame kuuli omaduste dict-i - Build bullet properties dict
             bullet_props = {
-                "is_crit": is_crit,
-                "has_knockback": has_knockback,
+            "is_crit": is_crit,
+            "has_knockback": has_knockback,
+            "is_crit_knockback": is_crit and has_knockback,
                 "knockback_force": knockback_force,
                 "has_poison": has_poison,
                 "poison_damage": poison_damage,
@@ -972,7 +994,8 @@ def update_game_logic():
                     continue
 
                 # Tavaline tabamus - Normal hit
-                player_health -= 1
+                damage = 2 if difficulty_manager.elapsed_time >= 60 else 1
+                player_health -= damage
                 player_invulnerable_timer = player_invulnerable_duration
                 # Mängi mängija tabamuse heli - Play player hit sound at player position
                 sound_manager.play("player_hit", position=pygame.Vector2(player_pos))
@@ -1016,6 +1039,7 @@ def update_game_logic():
                 if should_trigger:
                     upgrade_manager.generate_choices()
                     upgrade_selection_screen.set_time_without_hit(time_before_hit)
+                    upgrade_selection_screen.set_time_spent_alive(display_time)
                     upgrade_selection_screen._build_ui()  # Ehitab kaardid uuesti - Rebuild cards
                     upgrade_selection_screen.reset_cooldown()  # 0.5s viivitus enne klikkimist - 0.5s delay before clicking
                     state_manager.push_state(GameState.UPGRADE_SELECTION)
@@ -1062,9 +1086,6 @@ def update_game_logic():
                     # Rakenda ainult otsesele kahjule - Apply to direct damage only
                     base_damage = round(base_damage * (1 + proximity_bonus))
 
-                # Mängi vaenlase tabamuse heli vaenlase asukohas - Play enemy hit sound
-                sound_manager.play("enemy_hit", position=pygame.Vector2(enemy_unit.pos))
-
                 # A bat - tagasilöök - Knockback
                 if projectile.get("has_knockback", False):
                     kb_force = projectile.get("knockback_force", 0.0)
@@ -1105,6 +1126,9 @@ def update_game_logic():
                     enemy_id = id(enemy_unit)
                     if enemy_id in enemy_debuffs:
                         del enemy_debuffs[enemy_id]
+                else:
+                    # Mängi vaenlase tabamuse heli ainult kui vaenlane jääb ellu - Play enemy hit sound only if enemy survives
+                    sound_manager.play("enemy_hit", position=pygame.Vector2(enemy_unit.pos))
 
                 break
 
@@ -1139,6 +1163,7 @@ def update_game_logic():
     if not game_over:
         game_time += dt
         difficulty_manager.update(dt)
+        display_time += dt
 
     # ============================================
     # Update VFX - Efektide uuendus
