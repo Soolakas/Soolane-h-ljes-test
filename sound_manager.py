@@ -33,6 +33,11 @@ class SoundManager:
         self._sounds = {}                  # Laaditud helide kollektsioon - Loaded sounds collection
         self._volume = sfx_volume          # Aluseline helitugevus - Base volume level
         self._player_pos = None            # Mängija asukoht maailmas - Player world position
+        # Individuaalsete helite helitugevuse kordajad - Per-sound volume multipliers
+        self._sound_multipliers = {
+            "bullet": 0.4,
+            "enemy_dead": 2.0,
+        }
         self._load_sounds()                # Lae kõik heliefektid - Load all sound effects
 
     def _load_sounds(self):
@@ -93,9 +98,12 @@ class SoundManager:
             return
         
         sound = self._sounds[name]
-        # Arvuta efektiivne helitugevus: aluseline + kauguse sumbumine
-        # Calculate effective volume: base volume * distance attenuation
+        # Arvuta efektiivne helitugevus: aluseline + individuaalne kordaja + kauguse sumbumine
+        # Calculate effective volume: base volume * per-sound multiplier * distance attenuation
         effective_volume = self._volume
+        if name in self._sound_multipliers:
+            effective_volume *= self._sound_multipliers[name]
+        effective_volume = min(effective_volume, 1.0)
         if position is not None:
             distance_factor = self._calculate_distance_volume(position)
             effective_volume *= distance_factor
